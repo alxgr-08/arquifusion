@@ -1,0 +1,25 @@
+*                               @alxgr-08 @leonardopanduro-rgb @sebastianperez72
+
+/contracts/                     @alxgr-08 @leonardopanduro-rgb @sebastianperez72
+/shared/                        @alxgr-08 @leonardopanduro-rgb @sebastianperez72
+
+/infra/                         @leonardopanduro-rgb
+/.github/workflows/             @leonardopanduro-rgb
+/services/lake_to_bigquery/     @leonardopanduro-rgb
+/services/stream_exporter/      @leonardopanduro-rgb
+
+/statemachines/                 @sebastianperez72
+/services/simulator/            @sebastianperez72
+/services/fault_injector/       @sebastianperez72
+/services/offline_detector/     @sebastianperez72
+/services/incident_tasks/       @sebastianperez72
+/services/assign_technician/    @sebastianperez72
+/services/notify/               @sebastianperez72
+/services/api/                  @sebastianperez72
+
+/services/health_evaluator/     @alxgr-08
+/services/ai_diagnosis/         @alxgr-08
+/services/bigquery_sync_back/   @alxgr-08
+/analytics/                     @alxgr-08
+/frontend/                      @alxgr-08
+/docs/pitch.md                  @alxgr-08

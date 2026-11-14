@@ -21,6 +21,7 @@ frontend/dist/
 !*.tfvars.example
 .terraform.lock.hcl
 crash.log
+backend.hcl
 
 # Secrets (NEVER commit)
 .env

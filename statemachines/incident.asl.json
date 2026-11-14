@@ -1,0 +1,32 @@
+{
+  "Comment": "af-dev-incident: skeleton (Pass states). Triggered by EventBridge AnomalyDetected (WARNING/CRITICAL). Owner: Rol 2",
+  "StartAt": "ValidateEvent",
+  "States": {
+    "ValidateEvent": { "Type": "Pass", "Next": "EnrichContext" },
+    "EnrichContext": {
+      "Type": "Parallel",
+      "Branches": [
+        { "StartAt": "GetMachineProfile", "States": { "GetMachineProfile": { "Type": "Pass", "End": true } } },
+        { "StartAt": "GetRecentHistory", "States": { "GetRecentHistory": { "Type": "Pass", "End": true } } },
+        { "StartAt": "FindZoneCorrelation", "States": { "FindZoneCorrelation": { "Type": "Pass", "End": true } } }
+      ],
+      "ResultPath": "$.context",
+      "Next": "AIDiagnosis"
+    },
+    "AIDiagnosis": { "Type": "Pass", "Comment": "Lambda af-dev-ai-diagnosis (Rol 3)", "Next": "CreateIncident" },
+    "CreateIncident": { "Type": "Pass", "Next": "IsZoneIncident" },
+    "IsZoneIncident": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.zoneIncident", "BooleanEquals": true, "Next": "CreateZoneIncident" }],
+      "Default": "ReserveParts"
+    },
+    "CreateZoneIncident": { "Type": "Pass", "Next": "ReserveParts" },
+    "ReserveParts": { "Type": "Pass", "Next": "AssignTechnician" },
+    "AssignTechnician": { "Type": "Pass", "Next": "NotifyByRole" },
+    "NotifyByRole": { "Type": "Pass", "Next": "WaitForTechnician" },
+    "WaitForTechnician": { "Type": "Pass", "Comment": ".waitForTaskToken, timeout 30 min", "Next": "WaitForResolution" },
+    "WaitForResolution": { "Type": "Pass", "Comment": ".waitForTaskToken", "Next": "CloseIncident" },
+    "CloseIncident": { "Type": "Pass", "Next": "UpdateMachineState" },
+    "UpdateMachineState": { "Type": "Pass", "End": true }
+  }
+}

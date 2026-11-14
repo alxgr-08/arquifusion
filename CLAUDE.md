@@ -52,6 +52,19 @@ sevRank: 1=CRITICAL, 2=WARNING, 3=WATCH.
 Thresholds: >=80 OK, 60–79 WATCH, 40–59 WARNING, <40 CRITICAL. Weights/thresholds in SSM `/af/health/*`.
 
 ## Ownership
-- Rol 1: infra/, security, IAM, Cognito, Global Tables, S3 replication, lake-to-bigquery, stream-exporter, CI/CD, diagram.
-- Rol 2: simulator, fault-injector, offline-detector, Step Functions, incident-tasks, assign-technician, notify, api-*.
-- Rol 3: health-evaluator, ai-diagnosis, analytics/ (BigQuery ML), bigquery-sync-back, frontend, pitch script and video.
+- Rol 1 (Leonardo): infra/, security, IAM, Cognito, Global Tables, S3 replication, lake-to-bigquery, stream-exporter,
+  CI/CD, diagram.
+- Rol 2 (Sebastián): simulator, fault-injector, offline-detector, Step Functions, incident-tasks, assign-technician,
+  notify, api-*.
+- Rol 3 (Alexis): health-evaluator, ai-diagnosis, analytics/ (BigQuery ML), bigquery-sync-back, frontend, pitch.
+
+## AWS Academy (Learner Lab) constraints
+- IAM roles cannot be created: every Lambda, Step Function, IoT Rule, Firehose and Scheduler uses the existing
+  `LabRole` (Terraform variable `lab_role_arn`). Never generate `aws_iam_role` resources.
+- Session credentials expire (~4 h). Never hardcode them; refresh `~/.aws/credentials` from the lab "AWS Details".
+- Only us-east-1 and us-west-2 are available.
+- If a service is blocked (Bedrock, IoT Core, Location), use the plan B in docs/ONBOARDING.md.
+
+## Shared helpers
+- `af_shared.contracts`: pydantic models of the contracts.
+- `af_shared.keys`: DynamoDB key builders. Always use them instead of formatting keys by hand.

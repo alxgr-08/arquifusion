@@ -2,6 +2,16 @@
 
 Serverless, multi-cloud platform (AWS + GCP) that turns heavy-machinery telemetry into maintenance, parts, technician, fuel and productivity decisions.
 
+## Team
+
+| Role | Member | Owns |
+|---|---|---|
+| Rol 1 · Cloud architect & infra | Leonardo (`leonardopanduro-rgb`) | `infra/`, security, CI/CD, lake-to-bigquery, stream-exporter, diagram |
+| Rol 2 · Backend & orchestration | Sebastián (`sebastianperez72`) | simulator, fault-injector, offline-detector, `statemachines/`, incident-tasks, assign-technician, notify, api |
+| Rol 3 · Data, AI & product | Alexis (`alxgr-08`) | health-evaluator, ai-diagnosis, `analytics/`, bigquery-sync-back, `frontend/`, pitch |
+
+New here? Start with [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+
 ## Architecture (summary)
 
 ```

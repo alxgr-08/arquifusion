@@ -1,0 +1,30 @@
+{
+  "Comment": "af-dev-preventive: skeleton (Pass states). Triggered daily by EventBridge Scheduler. Owner: Rol 2",
+  "StartAt": "LoadMachines",
+  "States": {
+    "LoadMachines": { "Type": "Pass", "Result": { "machines": [] }, "Next": "ForEachMachine" },
+    "ForEachMachine": {
+      "Type": "Map",
+      "ItemsPath": "$.machines",
+      "MaxConcurrency": 20,
+      "ItemProcessor": {
+        "StartAt": "ComputeDueHours",
+        "States": {
+          "ComputeDueHours": { "Type": "Pass", "Next": "IsDue" },
+          "IsDue": {
+            "Type": "Choice",
+            "Choices": [{ "Variable": "$.isDue", "BooleanEquals": true, "Next": "CreateMaintenanceOrder" }],
+            "Default": "NotDue"
+          },
+          "CreateMaintenanceOrder": { "Type": "Pass", "Next": "CheckPartsAvailability" },
+          "CheckPartsAvailability": { "Type": "Pass", "End": true },
+          "NotDue": { "Type": "Succeed" }
+        }
+      },
+      "Next": "GroupOrdersByZone"
+    },
+    "GroupOrdersByZone": { "Type": "Pass", "Next": "ReorderPartsIfNeeded" },
+    "ReorderPartsIfNeeded": { "Type": "Pass", "Next": "SendDailySummary" },
+    "SendDailySummary": { "Type": "Pass", "End": true }
+  }
+}
