@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "messageId": "3b9e1a52-7c4d-4f0e-8a21-6d5c9b0e4f17",
+  "machineId": "EXC-0042",
+  "operationId": "MINA-NORTE",
+  "model": "EXC-320",
+  "machineType": "EXCAVATOR",
+  "timestamp": "2026-11-13T13:05:00Z",
+  "location": { "lat": -23.6509, "lon": -70.3975, "zoneId": "Z3" },
+  "status": "OPERATING",
+  "metrics": {
+    "engineHours": 12449.5,
+    "temperatureC": 78.6,
+    "vibrationMmS": 4.1,
+    "pressureBar": 212.0,
+    "fuelRateLph": 31.2,
+    "fuelLevelPct": 64,
+    "loadTons": 18.1,
+    "speedKmh": 6.0,
+    "rpm": 1820
+  },
+  "context": { "fuelBatchId": "FB-1120", "ambientTempC": 30.5 }
+}

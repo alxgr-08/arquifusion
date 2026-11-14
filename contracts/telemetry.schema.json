@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arquifusion/contracts/telemetry.schema.json",
+  "title": "Telemetry",
+  "description": "Machine -> cloud. MQTT topic: arquifusion/{operationId}/{machineId}/telemetry",
+  "type": "object",
+  "required": ["schemaVersion", "messageId", "machineId", "operationId", "model", "machineType", "timestamp", "location", "status", "metrics"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "messageId": { "type": "string", "format": "uuid" },
+    "machineId": { "type": "string", "pattern": "^[A-Z]{2,5}-[0-9]{4}$" },
+    "operationId": { "type": "string", "pattern": "^[A-Z0-9-]+$" },
+    "model": { "type": "string" },
+    "machineType": { "enum": ["EXCAVATOR", "HAUL_TRUCK", "LOADER", "BULLDOZER", "DRILL", "GRADER", "CRANE", "TRACTOR", "GENERATOR"] },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "location": {
+      "type": "object",
+      "required": ["lat", "lon", "zoneId"],
+      "additionalProperties": false,
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "zoneId": { "type": "string" }
+      }
+    },
+    "status": { "enum": ["OPERATING", "IDLE", "STOPPED", "MAINTENANCE"] },
+    "metrics": {
+      "type": "object",
+      "description": "null = sensor failure (distinct from 0)",
+      "required": ["engineHours", "temperatureC", "vibrationMmS", "pressureBar", "fuelRateLph", "fuelLevelPct", "loadTons", "speedKmh", "rpm"],
+      "additionalProperties": false,
+      "properties": {
+        "engineHours": { "type": ["number", "null"], "minimum": 0 },
+        "temperatureC": { "type": ["number", "null"] },
+        "vibrationMmS": { "type": ["number", "null"], "minimum": 0 },
+        "pressureBar": { "type": ["number", "null"], "minimum": 0 },
+        "fuelRateLph": { "type": ["number", "null"], "minimum": 0 },
+        "fuelLevelPct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "loadTons": { "type": ["number", "null"], "minimum": 0 },
+        "speedKmh": { "type": ["number", "null"], "minimum": 0 },
+        "rpm": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "fuelBatchId": { "type": "string" },
+        "ambientTempC": { "type": "number" }
+      }
+    }
+  }
+}

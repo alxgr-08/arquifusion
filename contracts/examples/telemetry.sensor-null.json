@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "messageId": "c2d4e6f8-1a3b-4c5d-8e7f-9a0b1c2d3e4f",
+  "machineId": "TRK-0107",
+  "operationId": "MINA-NORTE",
+  "model": "HT-793",
+  "machineType": "HAUL_TRUCK",
+  "timestamp": "2026-11-13T14:05:30Z",
+  "location": { "lat": -23.6431, "lon": -70.4012, "zoneId": "Z1" },
+  "status": "IDLE",
+  "metrics": {
+    "engineHours": 8320.0,
+    "temperatureC": null,
+    "vibrationMmS": 2.3,
+    "pressureBar": 198.5,
+    "fuelRateLph": 12.4,
+    "fuelLevelPct": 40,
+    "loadTons": 0,
+    "speedKmh": 0,
+    "rpm": 750
+  }
+}

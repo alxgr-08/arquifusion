@@ -1,0 +1,20 @@
+{
+  "source": "arquifusion.health",
+  "detail-type": "AnomalyDetected",
+  "detail": {
+    "schemaVersion": "1.0",
+    "machineId": "EXC-0042",
+    "operationId": "MINA-NORTE",
+    "zoneId": "Z3",
+    "model": "EXC-320",
+    "detectedAt": "2026-11-13T14:06:10Z",
+    "healthScore": 38,
+    "severity": "WARNING",
+    "signals": [
+      { "metric": "temperatureC", "value": 92.4, "baseline": 78.1, "zScore": 3.1, "trend": "RISING" },
+      { "metric": "vibrationMmS", "value": 7.8, "baseline": 4.2, "zScore": 2.6, "trend": "RISING" },
+      { "metric": "fuelRateLph", "value": 38.2, "baseline": 31.0, "zScore": 1.9, "trend": "STABLE" }
+    ],
+    "comparedAgainst": ["OWN_HISTORY", "MODEL_FLEET"]
+  }
+}
