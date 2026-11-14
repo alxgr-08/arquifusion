@@ -1,0 +1,56 @@
+{
+  "items": [
+    {
+      "timestamp": "2026-11-13T14:03:00Z",
+      "status": "OPERATING",
+      "metrics": {
+        "engineHours": 12450.5,
+        "temperatureC": 88.1,
+        "vibrationMmS": 6.2,
+        "pressureBar": 210,
+        "fuelRateLph": 38.2,
+        "fuelLevelPct": 61,
+        "loadTons": 18.5,
+        "speedKmh": 6.2,
+        "rpm": 1850
+      },
+      "healthScore": 62
+    },
+    {
+      "timestamp": "2026-11-13T14:04:00Z",
+      "status": "OPERATING",
+      "metrics": {
+        "engineHours": 12450.5,
+        "temperatureC": 90.3,
+        "vibrationMmS": 7.1,
+        "pressureBar": 210,
+        "fuelRateLph": 38.2,
+        "fuelLevelPct": 61,
+        "loadTons": 18.5,
+        "speedKmh": 6.2,
+        "rpm": 1850
+      },
+      "healthScore": 54
+    },
+    {
+      "timestamp": "2026-11-13T14:05:00Z",
+      "status": "OPERATING",
+      "metrics": {
+        "engineHours": 12450.5,
+        "temperatureC": 92.4,
+        "vibrationMmS": 7.8,
+        "pressureBar": 210,
+        "fuelRateLph": 38.2,
+        "fuelLevelPct": 61,
+        "loadTons": 18.5,
+        "speedKmh": 6.2,
+        "rpm": 1850
+      },
+      "healthScore": 46
+    }
+  ],
+  "count": 3,
+  "nextToken": null,
+  "from": "2026-11-13T14:00:00Z",
+  "to": "2026-11-13T14:10:00Z"
+}

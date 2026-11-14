@@ -5,3 +5,8 @@
 | 2026-11-14 | Monorepo with contracts-first model | Each role works against `contracts/` without waiting for others |
 | 2026-11-14 | Roles: Leonardo Rol 1, Sebastián Rol 2, Alexis Rol 3 | Team agreement |
 | 2026-11-14 | AWS Academy Learner Lab: all compute uses `LabRole` | Learner Lab does not allow creating IAM roles |
+| 2026-11-14 | Stock keeps `available` + `reservations.{incidentId}`; reserve with `available >= :n` | DynamoDB conditions cannot do `qty - reserved`; the map makes Step Functions retries idempotent |
+| 2026-11-14 | One open incident per machine (conditional claim on PROFILE) | health-evaluator emits AnomalyDetected on every bad reading |
+| 2026-11-14 | AI diagnosis falls back to rules on error/timeout/invalid answer | The demo must not depend on Bedrock availability in the lab |
+| 2026-11-14 | Step Function timeouts read from SSM `/af/incident/settings` | 30 min technician timeout does not fit a 5-minute video |
+| 2026-11-14 | Simulator fast loop (10 s) for machines with an injected fault | Health score needs 3 consecutive readings; 1/min is too slow for the demo |

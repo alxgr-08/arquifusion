@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "MACHINE_NOT_FOUND",
+    "message": "Machine NOPE-0000 not found"
+  }
+}

@@ -1,0 +1,274 @@
+{
+  "items": [
+    {
+      "kind": "MACHINE",
+      "incidentId": "INC-3f94",
+      "machineId": "EXC-0042",
+      "operationId": "MINA-NORTE",
+      "zoneId": "Z3",
+      "model": "EXC-320",
+      "severity": "WARNING",
+      "state": "ASSIGNED",
+      "createdAt": "2026-11-13T14:06:20Z",
+      "detectedAt": "2026-11-13T14:06:10Z",
+      "healthScore": 38,
+      "signals": [
+        {
+          "metric": "temperatureC",
+          "value": 92.4,
+          "baseline": 78.1,
+          "zScore": 3.1,
+          "trend": "RISING"
+        },
+        {
+          "metric": "vibrationMmS",
+          "value": 7.8,
+          "baseline": 4.2,
+          "zScore": 2.6,
+          "trend": "RISING"
+        },
+        {
+          "metric": "fuelRateLph",
+          "value": 38.2,
+          "baseline": 31,
+          "zScore": 1.9,
+          "trend": "STABLE"
+        }
+      ],
+      "failureMode": "BEARING_WEAR",
+      "aiDiagnosis": "Posible desgaste de rodamiento: temperatura y vibracion suben juntas desde hace 3 lecturas, por encima de su historial y del promedio de EXC-320.",
+      "aiSource": "BEDROCK",
+      "aiConfidence": 0.78,
+      "operatorAction": "CONTINUE_WITH_CAUTION",
+      "requiredSpecialty": "MECHANICAL",
+      "fuelBatchId": "FB-1120",
+      "engineHoursAtDetection": 12450.5,
+      "correlatedIncidents": [],
+      "timeline": [
+        {
+          "at": "2026-11-13T14:06:10Z",
+          "event": "DETECTED",
+          "severity": "WARNING"
+        },
+        {
+          "at": "2026-11-13T14:06:40Z",
+          "event": "DIAGNOSED",
+          "source": "BEDROCK",
+          "failureMode": "BEARING_WEAR"
+        },
+        {
+          "at": "2026-11-13T14:06:45Z",
+          "event": "PARTS_RESERVED",
+          "parts": 1
+        },
+        {
+          "at": "2026-11-13T14:06:50Z",
+          "event": "ASSIGNED",
+          "tech": "T-04",
+          "etaMinutes": 3.5
+        },
+        {
+          "at": "2026-11-13T14:07:00Z",
+          "event": "NOTIFIED",
+          "role": "TECHNICIAN",
+          "channel": "EMAIL",
+          "kind": "INCIDENT"
+        },
+        {
+          "at": "2026-11-13T14:07:05Z",
+          "event": "NOTIFIED",
+          "role": "MAINT_LEAD",
+          "channel": "IMMEDIATE",
+          "kind": "INCIDENT"
+        }
+      ],
+      "partsReserved": [
+        {
+          "partId": "BRG-KIT-02",
+          "warehouseId": "WH-NORTE",
+          "qty": 1
+        }
+      ],
+      "partsMissing": [],
+      "assignedTech": "T-04",
+      "etaMinutes": 3.5,
+      "assignmentCandidates": [
+        {
+          "techId": "T-04",
+          "name": "Diego Flores",
+          "etaMinutes": 3.5,
+          "hasSpecialty": true,
+          "queueLength": 0,
+          "cost": 3.5
+        },
+        {
+          "techId": "T-01",
+          "name": "Rosa Quispe",
+          "etaMinutes": 7.6,
+          "hasSpecialty": true,
+          "queueLength": 0,
+          "cost": 7.6
+        },
+        {
+          "techId": "T-07",
+          "name": "Carlos Huaman",
+          "etaMinutes": 8,
+          "hasSpecialty": true,
+          "queueLength": 0,
+          "cost": 8
+        }
+      ],
+      "pendingStage": "ARRIVAL"
+    },
+    {
+      "kind": "MACHINE",
+      "incidentId": "INC-ab42",
+      "machineId": "EXC-0042",
+      "operationId": "MINA-NORTE",
+      "zoneId": "Z3",
+      "model": "EXC-320",
+      "severity": "WARNING",
+      "state": "CLOSED",
+      "createdAt": "2026-11-10T09:12:25Z",
+      "detectedAt": "2026-11-10T09:12:00Z",
+      "healthScore": 38,
+      "signals": [
+        {
+          "metric": "temperatureC",
+          "value": 92.4,
+          "baseline": 78.1,
+          "zScore": 3.1,
+          "trend": "RISING"
+        },
+        {
+          "metric": "vibrationMmS",
+          "value": 7.8,
+          "baseline": 4.2,
+          "zScore": 2.6,
+          "trend": "RISING"
+        },
+        {
+          "metric": "fuelRateLph",
+          "value": 38.2,
+          "baseline": 31,
+          "zScore": 1.9,
+          "trend": "STABLE"
+        }
+      ],
+      "failureMode": "BEARING_WEAR",
+      "aiDiagnosis": "Posible desgaste de rodamiento: temperatura y vibracion suben juntas desde hace 3 lecturas, por encima de su historial y del promedio de EXC-320.",
+      "aiSource": "BEDROCK",
+      "aiConfidence": 0.78,
+      "operatorAction": "CONTINUE_WITH_CAUTION",
+      "requiredSpecialty": "MECHANICAL",
+      "fuelBatchId": "FB-1120",
+      "engineHoursAtDetection": 12450.5,
+      "correlatedIncidents": [],
+      "timeline": [
+        {
+          "at": "2026-11-10T09:12:00Z",
+          "event": "DETECTED",
+          "severity": "WARNING"
+        },
+        {
+          "at": "2026-11-10T09:12:45Z",
+          "event": "DIAGNOSED",
+          "source": "BEDROCK",
+          "failureMode": "BEARING_WEAR"
+        },
+        {
+          "at": "2026-11-10T09:12:50Z",
+          "event": "PARTS_RESERVED",
+          "parts": 1
+        },
+        {
+          "at": "2026-11-10T09:12:55Z",
+          "event": "ASSIGNED",
+          "tech": "T-04",
+          "etaMinutes": 3.5
+        },
+        {
+          "at": "2026-11-10T09:13:05Z",
+          "event": "NOTIFIED",
+          "role": "TECHNICIAN",
+          "channel": "EMAIL",
+          "kind": "INCIDENT"
+        },
+        {
+          "at": "2026-11-10T09:13:10Z",
+          "event": "NOTIFIED",
+          "role": "MAINT_LEAD",
+          "channel": "IMMEDIATE",
+          "kind": "INCIDENT"
+        },
+        {
+          "at": "2026-11-10T11:08:35Z",
+          "event": "CLOSED",
+          "downtimeMinutes": 116
+        },
+        {
+          "at": "2026-11-10T11:08:45Z",
+          "event": "NOTIFIED",
+          "role": "MAINT_LEAD",
+          "channel": "IMMEDIATE",
+          "kind": "RESOLVED"
+        },
+        {
+          "at": "2026-11-10T11:08:45Z",
+          "event": "NOTIFIED",
+          "role": "SUPERVISOR",
+          "channel": "IMMEDIATE",
+          "kind": "RESOLVED"
+        }
+      ],
+      "partsReserved": [
+        {
+          "partId": "BRG-KIT-02",
+          "warehouseId": "WH-SUR",
+          "qty": 1
+        }
+      ],
+      "partsMissing": [],
+      "assignedTech": "T-04",
+      "etaMinutes": 3.5,
+      "assignmentCandidates": [
+        {
+          "techId": "T-04",
+          "name": "Diego Flores",
+          "etaMinutes": 3.5,
+          "hasSpecialty": true,
+          "queueLength": 0,
+          "cost": 3.5
+        },
+        {
+          "techId": "T-01",
+          "name": "Rosa Quispe",
+          "etaMinutes": 7.6,
+          "hasSpecialty": true,
+          "queueLength": 0,
+          "cost": 7.6
+        },
+        {
+          "techId": "T-07",
+          "name": "Carlos Huaman",
+          "etaMinutes": 8,
+          "hasSpecialty": true,
+          "queueLength": 0,
+          "cost": 8
+        }
+      ],
+      "closedAt": "2026-11-10T11:08:35Z",
+      "downtimeMinutes": 116,
+      "partsUsed": [
+        {
+          "partId": "BRG-KIT-02",
+          "warehouseId": "WH-SUR",
+          "qty": 1
+        }
+      ],
+      "maintenanceId": "MNT-e19f"
+    }
+  ],
+  "count": 2,
+  "nextToken": null
+}

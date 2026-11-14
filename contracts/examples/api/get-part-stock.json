@@ -1,0 +1,34 @@
+{
+  "part": {
+    "partId": "BRG-KIT-02",
+    "name": "Kit de rodamientos",
+    "unitCostUsd": 1850,
+    "leadTimeDays": 10
+  },
+  "warehouses": [
+    {
+      "warehouseId": "WH-NORTE",
+      "forecast": [],
+      "qty": 2,
+      "available": 1,
+      "reserved": 1,
+      "updatedAt": "2026-11-13T14:06:45Z"
+    },
+    {
+      "warehouseId": "WH-SUR",
+      "forecast": [
+        {
+          "week": "2026-W47",
+          "demand": 1.6,
+          "lower": 0.7,
+          "upper": 2.8,
+          "source": "BQML_ARIMA_PLUS"
+        }
+      ],
+      "qty": 0,
+      "available": 0,
+      "reserved": 0,
+      "updatedAt": "2026-11-10T11:08:35Z"
+    }
+  ]
+}

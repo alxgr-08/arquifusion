@@ -1,0 +1,23 @@
+{
+  "machineId": "EXC-0042",
+  "operationId": "MINA-NORTE",
+  "model": "EXC-320",
+  "machineType": "EXCAVATOR",
+  "zoneId": "Z3",
+  "lat": -23.6509,
+  "lon": -70.3975,
+  "status": "OPERATING",
+  "healthScore": 100,
+  "severity": "OK",
+  "anomalyStreak": 0,
+  "engineHours": 12450.5,
+  "lastMaintenanceHours": 12450.5,
+  "maintenanceIntervalHours": 500,
+  "nominalLoadTons": 18,
+  "costPerHourUsd": 185,
+  "fuelBatchId": "FB-1120",
+  "lastMaintenanceAt": "2026-11-10T11:08:40Z",
+  "openIncidentId": "INC-3f94",
+  "openIncidentSK": "INCIDENT#2026-11-13T14:06:20Z#INC-3f94",
+  "openIncidentSeverity": "WARNING"
+}

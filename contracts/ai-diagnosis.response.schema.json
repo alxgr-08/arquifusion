@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arquifusion/contracts/ai-diagnosis.response.schema.json",
+  "title": "AiDiagnosisResponse",
+  "description": "af-dev-ai-diagnosis (Rol 3) -> incident Step Function (Rol 2). If the Lambda fails or returns an invalid body, incident-tasks falls back to rule-based diagnosis with the same shape (source RULES). PROPOSAL v1.0.",
+  "type": "object",
+  "required": ["schemaVersion", "source", "failureMode", "diagnosis", "confidence", "recommendedParts", "requiredSpecialty", "operatorAction", "messages"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "source": { "enum": ["BEDROCK", "GEMINI", "RULES"] },
+    "failureMode": { "type": "string", "description": "One of candidateFailureModes[].mode, or UNKNOWN" },
+    "diagnosis": { "type": "string", "maxLength": 400 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "recommendedParts": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["partId", "qty"], "additionalProperties": false,
+        "properties": { "partId": { "type": "string" }, "qty": { "type": "integer", "minimum": 1 } }
+      }
+    },
+    "requiredSpecialty": { "enum": ["HYDRAULIC", "MECHANICAL", "ENGINE", "ELECTRICAL"] },
+    "operatorAction": { "enum": ["STOP", "CONTINUE_WITH_CAUTION", "CONTINUE"] },
+    "messages": {
+      "type": "object",
+      "description": "One short message per role (P9). Plain text, max ~300 chars each.",
+      "required": ["OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER"],
+      "additionalProperties": false,
+      "properties": {
+        "OPERATOR": { "type": "string" }, "TECHNICIAN": { "type": "string" }, "MAINT_LEAD": { "type": "string" },
+        "SUPERVISOR": { "type": "string" }, "MANAGER": { "type": "string" }
+      }
+    },
+    "zoneHypothesis": { "type": ["string", "null"], "description": "Probable common cause when the zone has 3+ machines with incidents (P11)" }
+  }
+}

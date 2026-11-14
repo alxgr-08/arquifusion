@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[1] / "contracts"
 SCHEMAS = {
     "telemetry": "telemetry.schema.json",
     "anomaly-detected": "anomaly-detected.schema.json",
+    "fleet-config": "fleet-config.schema.json",
+    "ai-diagnosis-request": "ai-diagnosis.request.schema.json",
+    "ai-diagnosis-response": "ai-diagnosis.response.schema.json",
 }
 
 
