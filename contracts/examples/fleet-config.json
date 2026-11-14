@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "1.0",
+  "operationId": "MINA-NORTE",
+  "zones": {
+    "Z1": { "name": "Rajo norte", "lat": -23.5931, "lon": -69.9812, "fuelBatchId": "FB-1118" },
+    "Z2": { "name": "Botadero", "lat": -23.6078, "lon": -69.9905, "fuelBatchId": "FB-1118" },
+    "Z3": { "name": "Rajo sur", "lat": -23.6009, "lon": -69.9775, "fuelBatchId": "FB-1120" },
+    "Z4": { "name": "Chancado", "lat": -23.6122, "lon": -69.9701, "fuelBatchId": "FB-1119" }
+  },
+  "models": {
+    "EXC-320": {
+      "machineType": "EXCAVATOR", "intervalHours": 500, "nominalLoadTons": 18,
+      "normal": { "temperatureC": 78, "vibrationMmS": 4.2, "pressureBar": 210, "fuelRateLph": 31, "speedKmh": 4, "rpm": 1800 }
+    },
+    "HT-793": {
+      "machineType": "HAUL_TRUCK", "intervalHours": 500, "nominalLoadTons": 220,
+      "normal": { "temperatureC": 85, "vibrationMmS": 3.1, "pressureBar": 180, "fuelRateLph": 95, "speedKmh": 28, "rpm": 1700 }
+    },
+    "LD-980": {
+      "machineType": "LOADER", "intervalHours": 400, "nominalLoadTons": 12,
+      "normal": { "temperatureC": 80, "vibrationMmS": 3.8, "pressureBar": 195, "fuelRateLph": 42, "speedKmh": 10, "rpm": 1900 }
+    },
+    "BD-850": {
+      "machineType": "BULLDOZER", "intervalHours": 450, "nominalLoadTons": 0,
+      "normal": { "temperatureC": 82, "vibrationMmS": 5.0, "pressureBar": 200, "fuelRateLph": 48, "speedKmh": 6, "rpm": 1850 }
+    },
+    "DR-400": {
+      "machineType": "DRILL", "intervalHours": 400, "nominalLoadTons": 0,
+      "normal": { "temperatureC": 75, "vibrationMmS": 6.0, "pressureBar": 240, "fuelRateLph": 36, "speedKmh": 0, "rpm": 2100 }
+    }
+  },
+  "machines": [
+    { "machineId": "EXC-0042", "model": "EXC-320", "zoneId": "Z3", "engineHours": 12450, "lastMaintenanceHours": 12000, "utilization": 0.72 },
+    { "machineId": "EXC-0043", "model": "EXC-320", "zoneId": "Z1", "engineHours": 9800, "lastMaintenanceHours": 9500, "utilization": 0.70 },
+    { "machineId": "EXC-0051", "model": "EXC-320", "zoneId": "Z3", "engineHours": 15020, "lastMaintenanceHours": 14550, "utilization": 0.76, "fuelWearPctPerDay": 0.35 },
+    { "machineId": "TRK-0101", "model": "HT-793", "zoneId": "Z1", "engineHours": 20110, "lastMaintenanceHours": 20000, "utilization": 0.95, "overload": true },
+    { "machineId": "TRK-0102", "model": "HT-793", "zoneId": "Z2", "engineHours": 18760, "lastMaintenanceHours": 18300, "utilization": 0.66 },
+    { "machineId": "TRK-0103", "model": "HT-793", "zoneId": "Z3", "engineHours": 21540, "lastMaintenanceHours": 21200, "utilization": 0.72 },
+    { "machineId": "TRK-0104", "model": "HT-793", "zoneId": "Z2", "engineHours": 7300, "lastMaintenanceHours": 7000, "utilization": 0.18 },
+    { "machineId": "TRK-0107", "model": "HT-793", "zoneId": "Z3", "engineHours": 8320, "lastMaintenanceHours": 8000, "utilization": 0.80 },
+    { "machineId": "LDR-0011", "model": "LD-980", "zoneId": "Z4", "engineHours": 11200, "lastMaintenanceHours": 10900, "utilization": 0.68, "fuelAnomalyLastDays": 10 },
+    { "machineId": "LDR-0012", "model": "LD-980", "zoneId": "Z3", "engineHours": 6400, "lastMaintenanceHours": 6100, "utilization": 0.75 },
+    { "machineId": "DOZ-0007", "model": "BD-850", "zoneId": "Z2", "engineHours": 13350, "lastMaintenanceHours": 12950, "utilization": 0.82 },
+    { "machineId": "DRL-0003", "model": "DR-400", "zoneId": "Z4", "engineHours": 5600, "lastMaintenanceHours": 5250, "utilization": 0.22 }
+  ],
+  "technicians": [
+    { "techId": "T-03", "name": "Rosa Quispe", "specialties": ["BEARING", "DRIVETRAIN"], "lat": -23.5955, "lon": -69.9840 },
+    { "techId": "T-07", "name": "Jorge Mamani", "specialties": ["HYDRAULIC_SYSTEM", "BEARING"], "lat": -23.6030, "lon": -69.9790 },
+    { "techId": "T-09", "name": "Lucía Torres", "specialties": ["ENGINE", "FUEL_SYSTEM"], "lat": -23.6100, "lon": -69.9720 },
+    { "techId": "T-12", "name": "Carlos Rojas", "specialties": ["COOLING_SYSTEM", "ENGINE"], "lat": -23.6070, "lon": -69.9900 },
+    { "techId": "T-15", "name": "Ana Flores", "specialties": ["HYDRAULIC_SYSTEM"], "lat": -23.6000, "lon": -69.9800 }
+  ],
+  "warehouses": {
+    "WH-NORTE": { "zones": ["Z1", "Z3"] },
+    "WH-SUR": { "zones": ["Z2", "Z4"] }
+  },
+  "parts": [
+    { "partId": "FLT-HID-01", "name": "Filtro hidráulico", "component": "HYDRAULIC_SYSTEM", "unitCost": 85, "stock": { "WH-NORTE": 6, "WH-SUR": 2 }, "dailyDemand": 0.45 },
+    { "partId": "BRG-SPH-22", "name": "Rodamiento esférico", "component": "BEARING", "unitCost": 1450, "stock": { "WH-NORTE": 2, "WH-SUR": 1 }, "dailyDemand": 0.12 },
+    { "partId": "FLT-FUE-02", "name": "Filtro de combustible", "component": "FUEL_SYSTEM", "unitCost": 40, "stock": { "WH-NORTE": 14, "WH-SUR": 9 }, "dailyDemand": 0.8 },
+    { "partId": "CLT-RAD-05", "name": "Kit de radiador", "component": "COOLING_SYSTEM", "unitCost": 960, "stock": { "WH-NORTE": 3, "WH-SUR": 4 }, "dailyDemand": 0.04 },
+    { "partId": "INJ-DSL-07", "name": "Inyector diésel", "component": "ENGINE", "unitCost": 620, "stock": { "WH-NORTE": 5, "WH-SUR": 4 }, "dailyDemand": 0.25, "irregular": true }
+  ]
+}
