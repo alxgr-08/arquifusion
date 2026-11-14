@@ -1,6 +1,7 @@
 """Technician availability shared by assign-technician and incident-tasks. Owner: Rol 2.
 
-availability: AVAILABLE (queue 0) | ASSIGNED (queue >= 1) | OFF_SHIFT. GSI1SK = {availability}#{techId}.
+availability: AVAILABLE (queue 0) | BUSY (queue >= 1) | OFF (frontend Technician type).
+GSI1SK = {availability}#{techId}.
 """
 
 from __future__ import annotations
@@ -19,8 +20,9 @@ def release(table: Any, tech_id: str, operation_id: str, incident_id: str) -> di
     try:
         updated = table.update_item(
             Key={"PK": f"TECH#{tech_id}", "SK": "PROFILE"},
-            UpdateExpression="ADD queueLength :minus DELETE incidentQueue :inc",
+            UpdateExpression="ADD #q :minus DELETE incidentQueue :inc",
             ConditionExpression="contains(incidentQueue, :id)",
+            ExpressionAttributeNames={"#q": "queue"},
             ExpressionAttributeValues={":minus": -1, ":inc": {incident_id}, ":id": incident_id},
             ReturnValues="ALL_NEW",
         )["Attributes"]
@@ -28,15 +30,16 @@ def release(table: Any, tech_id: str, operation_id: str, incident_id: str) -> di
         if is_conditional_failure(exc):
             return None
         raise
-    if int(updated.get("queueLength", 0)) <= 0 and updated.get("availability") == "ASSIGNED":
+    if int(updated.get("queue", 0)) <= 0 and updated.get("availability") == "BUSY":
         try:
             table.update_item(
                 Key={"PK": f"TECH#{tech_id}", "SK": "PROFILE"},
-                UpdateExpression="SET availability = :a, GSI1SK = :sk, queueLength = :zero REMOVE currentIncidentId",
-                ConditionExpression="availability = :assigned AND queueLength <= :zero",
+                UpdateExpression="SET availability = :a, GSI1SK = :sk, #q = :zero REMOVE currentIncidentId",
+                ConditionExpression="availability = :busy AND #q <= :zero",
+                ExpressionAttributeNames={"#q": "queue"},
                 ExpressionAttributeValues={
                     ":a": "AVAILABLE",
-                    ":assigned": "ASSIGNED",
+                    ":busy": "BUSY",
                     ":zero": 0,
                     ":sk": keys.technician_keys(tech_id, operation_id, "AVAILABLE")["GSI1SK"],
                 },

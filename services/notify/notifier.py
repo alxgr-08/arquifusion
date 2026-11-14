@@ -48,26 +48,27 @@ def channel_for(kind: str, role: str, severity: str, payload: dict[str, Any]) ->
 
 def compose(kind: str, role: str, payload: dict[str, Any]) -> tuple[str, str]:
     inc = payload.get("incident") or {}
-    diag = payload.get("diagnosis") or {}
+    diag = payload.get("diagnosis") or {}  # ai-diagnosis response (contracts/ai-diagnosis-response.schema.json)
+    detail = diag.get("diagnosis") or {}
     asg = payload.get("assignment") or {}
     parts = payload.get("parts") or {}
     machine, sev, zone = inc.get("machineId", "-"), inc.get("severity", "-"), inc.get("zoneId", "-")
     head = f"[{sev}] {machine} ({zone})"
 
     if kind in ("INCIDENT", "ESCALATED"):
-        body = (diag.get("messages") or {}).get(role) or diag.get("diagnosis") or "Anomalia detectada."
+        body = (diag.get("messages") or {}).get(role) or detail.get("probableCause") or "Anomalia detectada."
         facts = []
         if asg.get("assigned"):
             eta = f", ETA {round(asg['etaMinutes'])} min" if asg.get("etaMinutes") is not None else ""
             facts.append(f"Tecnico {asg['techId']}{eta}")
         if parts.get("reserved"):
             facts.append(
-                "Repuestos: " + ", ".join(f"{p['partId']} x{p['qty']} ({p['warehouseId']})" for p in parts["reserved"])
+                "Repuestos: " + ", ".join(f"{p['partId']} x{p['qty']} ({p['warehouse']})" for p in parts["reserved"])
             )
         if role == "TECHNICIAN":
             facts.append(f"Incidente {inc.get('incidentId')}. Confirma llegada en la app.")
         prefix = "ESCALADO a CRITICAL. " if kind == "ESCALATED" else ""
-        return f"{head} {diag.get('failureMode', 'ANOMALIA')}", prefix + body + (
+        return f"{head} {detail.get('component', 'ANOMALIA')}", prefix + body + (
             "\n" + "\n".join(facts) if facts else ""
         )
     if kind == "ZONE_INCIDENT":
@@ -76,7 +77,7 @@ def compose(kind: str, role: str, payload: dict[str, Any]) -> tuple[str, str]:
         return (
             f"[ZONA {zone}] Incidente de zona",
             f"{len(z.get('machines', []))} maquinas con incidentes en {zone}: {machines}. "
-            f"{z.get('hypothesis') or diag.get('zoneHypothesis') or ''}".strip(),
+            f"{z.get('hypothesis') or (diag.get('zoneAnalysis') or {}).get('commonCause') or ''}".strip(),
         )
     if kind == "RESTOCK":
         missing = ", ".join(f"{p['partId']} x{p['qty']}" for p in parts.get("missing", []))
@@ -102,7 +103,7 @@ def compose(kind: str, role: str, payload: dict[str, Any]) -> tuple[str, str]:
         )
     if kind == "DAILY_SUMMARY":
         return "Resumen diario de mantenimiento", payload.get("summary") or "Sin novedades."
-    return head, diag.get("diagnosis", "")
+    return head, detail.get("probableCause", "")
 
 
 def notify(payload: dict[str, Any], sns: Any, topics: dict[str, str]) -> dict[str, Any]:

@@ -21,7 +21,7 @@ QUEUE_PENALTY = 15
 
 def candidates(table: Any, operation_id: str) -> list[dict[str, Any]]:
     res = table.query(IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq(f"OP#{operation_id}#TECH"))
-    return [from_ddb(i) for i in res["Items"] if i.get("availability") in ("AVAILABLE", "ASSIGNED")]
+    return [from_ddb(i) for i in res["Items"] if i.get("availability") in ("AVAILABLE", "BUSY")]
 
 
 def eta_minutes(
@@ -54,15 +54,15 @@ def rank(techs_: list[dict[str, Any]], etas: list[float], specialty: str | None)
     ranked = []
     for t, eta in zip(techs_, etas, strict=True):
         lacks = bool(specialty) and specialty not in t.get("specialties", [])
-        queue = int(t.get("queueLength", 0))
+        queue = int(t.get("queue", 0))
         cost = eta + NO_SPECIALTY_PENALTY * lacks + QUEUE_PENALTY * queue
         ranked.append(
             {
                 "techId": t["techId"],
                 "name": t.get("name"),
-                "etaMinutes": round(eta, 1),
+                "etaMinutes": max(1, round(eta)),
                 "hasSpecialty": not lacks,
-                "queueLength": queue,
+                "queue": queue,
                 "cost": round(cost, 1),
             }
         )
@@ -78,7 +78,7 @@ def assign(
     attempt = int(previous.get("attempt", 0)) + 1
     settings = inc.get("settings", {})
     profile = payload.get("profile") or {}
-    specialty = (payload.get("diagnosis") or {}).get("requiredSpecialty")
+    specialty = ((payload.get("diagnosis") or {}).get("diagnosis") or {}).get("component")
 
     if profile.get("lat") is None:
         row = from_ddb(table.get_item(Key=keys.machine_profile(inc["machineId"])).get("Item") or {})
@@ -109,15 +109,16 @@ def assign(
             table.update_item(
                 Key={"PK": f"TECH#{tech_id}", "SK": "PROFILE"},
                 UpdateExpression="SET availability = :a, GSI1SK = :sk, currentIncidentId = :inc "
-                "ADD queueLength :one, incidentQueue :incset",
+                "ADD #q :one, incidentQueue :incset",
                 ConditionExpression="availability IN (:avail, :a) AND NOT contains(incidentQueue, :inc)",
+                ExpressionAttributeNames={"#q": "queue"},
                 ExpressionAttributeValues={
-                    ":a": "ASSIGNED",
+                    ":a": "BUSY",
                     ":avail": "AVAILABLE",
                     ":inc": inc["incidentId"],
                     ":one": 1,
                     ":incset": {inc["incidentId"]},
-                    ":sk": keys.technician_keys(tech_id, inc["operationId"], "ASSIGNED")["GSI1SK"],
+                    ":sk": keys.technician_keys(tech_id, inc["operationId"], "BUSY")["GSI1SK"],
                 },
             )
         except Exception as exc:
@@ -149,7 +150,7 @@ def assign(
                     ":s": "ASSIGNED",
                     ":eta": choice["etaMinutes"],
                     ":c": ranked[:3],
-                    ":ev": [{"at": now, "event": "ASSIGNED", "tech": tech_id, "etaMinutes": choice["etaMinutes"]}],
+                    ":ev": [{"at": now, "event": "ASSIGNED", "tech": tech_id}],
                 }
             ),
         )
@@ -176,10 +177,11 @@ def release(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
         techs.release(table, tech_id, inc["operationId"], inc["incidentId"])
     table.update_item(
         Key={"PK": keys.machine_pk(inc["machineId"]), "SK": inc["incidentSK"]},
-        UpdateExpression="SET #st = :s, timeline = list_append(timeline, :ev) REMOVE assignedTech, taskToken",
+        UpdateExpression="SET #st = :s, activity = list_append(activity, :ev) "
+        "REMOVE assignedTech, etaMinutes, taskToken",
         ExpressionAttributeNames={"#st": "state"},
         ExpressionAttributeValues={
-            ":s": "UNASSIGNED",
+            ":s": "OPEN",
             ":ev": [{"at": now, "event": "ACK_TIMEOUT", "tech": tech_id or "-"}],
         },
     )

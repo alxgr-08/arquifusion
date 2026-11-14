@@ -1,21 +1,29 @@
 from af_shared.contracts import (
-    AiDiagnosisResponse,
     AnomalyDetail,
     AnomalyDetected,
+    Diagnosis,
+    DiagnosisRequest,
+    DiagnosisResult,
     MachineStatus,
+    RoleMessages,
     Severity,
     Signal,
     Telemetry,
     Trend,
+    ZoneAnalysis,
 )
 
 __all__ = [
-    "AiDiagnosisResponse",
     "AnomalyDetected",
     "AnomalyDetail",
+    "Diagnosis",
+    "DiagnosisRequest",
+    "DiagnosisResult",
     "MachineStatus",
+    "RoleMessages",
     "Severity",
     "Signal",
     "Telemetry",
     "Trend",
+    "ZoneAnalysis",
 ]
