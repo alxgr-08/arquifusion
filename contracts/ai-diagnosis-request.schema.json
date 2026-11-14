@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arquifusion/contracts/ai-diagnosis-request.schema.json",
+  "title": "AiDiagnosisRequest",
+  "description": "Incident Step Function (Rol 2) -> Lambda af-dev-ai-diagnosis (Rol 3). Built after EnrichContext.",
+  "type": "object",
+  "required": ["schemaVersion", "anomaly"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "incidentId": { "type": "string" },
+    "anomaly": { "$ref": "anomaly-detected.schema.json#/properties/detail" },
+    "machine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string" },
+        "engineHours": { "type": "number" },
+        "lastMaintenanceHours": { "type": "number" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fuelBatchId": { "type": "string" },
+        "ambientTempC": { "type": "number" }
+      }
+    },
+    "history": {
+      "type": "array",
+      "description": "Recent INCIDENT# and MAINT# items of the machine (newest first, max 10)",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": ["type", "at", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "enum": ["INCIDENT", "MAINTENANCE"] },
+          "at": { "type": "string", "format": "date-time" },
+          "summary": { "type": "string" },
+          "partsReplaced": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "zoneCorrelation": {
+      "type": "array",
+      "description": "Other machines with incidents in the same zone in the last 2 h (GSI2)",
+      "items": {
+        "type": "object",
+        "required": ["machineId", "model", "detectedAt", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "machineId": { "type": "string" },
+          "model": { "type": "string" },
+          "detectedAt": { "type": "string", "format": "date-time" },
+          "severity": { "enum": ["OK", "WATCH", "WARNING", "CRITICAL"] },
+          "topMetric": { "type": "string" },
+          "fuelBatchId": { "type": "string" }
+        }
+      }
+    }
+  }
+}

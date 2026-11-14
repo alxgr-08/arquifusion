@@ -21,3 +21,16 @@ def test_null_metric_is_sensor_failure_not_zero() -> None:
     msg = Telemetry.model_validate(json.loads((EXAMPLES / "telemetry.sensor-null.json").read_text(encoding="utf-8")))
     assert msg.metrics.temperature_c is None
     assert msg.metrics.load_tons == 0
+
+
+def test_ai_diagnosis_examples_parse() -> None:
+    from af_shared import DiagnosisRequest, DiagnosisResult
+
+    req = DiagnosisRequest.model_validate(
+        json.loads((EXAMPLES / "ai-diagnosis-request.json").read_text(encoding="utf-8"))
+    )
+    res = DiagnosisResult.model_validate(
+        json.loads((EXAMPLES / "ai-diagnosis-response.json").read_text(encoding="utf-8"))
+    )
+    assert len(req.zone_correlation) == 2
+    assert res.diagnosis.component == "BEARING"

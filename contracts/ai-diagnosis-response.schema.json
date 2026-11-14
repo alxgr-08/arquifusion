@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arquifusion/contracts/ai-diagnosis-response.schema.json",
+  "title": "AiDiagnosisResponse",
+  "description": "Lambda af-dev-ai-diagnosis (Rol 3) -> incident Step Function (Rol 2). messages feed NotifyByRole (SNS per role).",
+  "type": "object",
+  "required": ["schemaVersion", "source", "diagnosis", "zoneAnalysis", "messages"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "source": { "enum": ["BEDROCK", "RULES"] },
+    "modelId": { "type": ["string", "null"] },
+    "diagnosis": {
+      "type": "object",
+      "required": ["probableCause", "component", "confidence", "recommendedAction", "stopMachine", "estimatedRepairMinutes"],
+      "additionalProperties": false,
+      "properties": {
+        "probableCause": { "type": "string" },
+        "component": {
+          "enum": ["BEARING", "COOLING_SYSTEM", "HYDRAULIC_SYSTEM", "FUEL_SYSTEM", "ENGINE", "DRIVETRAIN", "SENSOR", "UNKNOWN"]
+        },
+        "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "recommendedAction": { "type": "string" },
+        "stopMachine": { "type": "boolean" },
+        "estimatedRepairMinutes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "zoneAnalysis": {
+      "type": ["object", "null"],
+      "required": ["isZoneIncident", "commonCause", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "isZoneIncident": { "type": "boolean" },
+        "commonCause": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "messages": {
+      "type": "object",
+      "description": "One message per Cognito group / SNS topic (matrix in guide section 5.6)",
+      "required": ["OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER"],
+      "additionalProperties": false,
+      "properties": {
+        "OPERATOR": { "type": "string" },
+        "TECHNICIAN": { "type": "string" },
+        "MAINT_LEAD": { "type": "string" },
+        "SUPERVISOR": { "type": "string" },
+        "MANAGER": { "type": "string" }
+      }
+    }
+  }
+}
