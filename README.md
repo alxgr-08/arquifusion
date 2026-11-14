@@ -46,7 +46,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate   |   Linux/Mac: source .venv/bin/activate
 pip install -r requirements-dev.txt
 python scripts/validate_contracts.py
-pytest -q
+python scripts/run_tests.py
 ```
 
 ## Git workflow

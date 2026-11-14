@@ -12,7 +12,7 @@
    .venv\Scripts\activate          # Windows  (Linux/Mac: source .venv/bin/activate)
    pip install -r requirements-dev.txt
    python scripts/validate_contracts.py
-   pytest -q
+   python scripts/run_tests.py
    ```
 4. Leer `CLAUDE.md` y `contracts/`. Si usan IA para programar, CLAUDE.md ya le da el contexto.
 5. Tomar sus issues en GitHub (filtro `label:rol:N`).
@@ -23,7 +23,7 @@
 git checkout main && git pull
 git checkout -b feat/rol2-simulator        # feat/ fix/ infra/ + rolN + tema
 # ... código + tests ...
-ruff check . && pytest -q
+ruff check . && python scripts/run_tests.py
 git commit -m "feat: add fleet simulator"   # Conventional Commits en inglés
 git push -u origin feat/rol2-simulator
 gh pr create --fill                          # 1 aprobación, squash merge
