@@ -1,3 +1,21 @@
-from af_shared.contracts import AnomalyDetail, AnomalyDetected, MachineStatus, Severity, Signal, Telemetry, Trend
+from af_shared.contracts import (
+    AiDiagnosisResponse,
+    AnomalyDetail,
+    AnomalyDetected,
+    MachineStatus,
+    Severity,
+    Signal,
+    Telemetry,
+    Trend,
+)
 
-__all__ = ["AnomalyDetected", "AnomalyDetail", "MachineStatus", "Severity", "Signal", "Telemetry", "Trend"]
+__all__ = [
+    "AiDiagnosisResponse",
+    "AnomalyDetected",
+    "AnomalyDetail",
+    "MachineStatus",
+    "Severity",
+    "Signal",
+    "Telemetry",
+    "Trend",
+]

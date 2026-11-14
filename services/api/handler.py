@@ -1,2 +1,54 @@
-def handler(event: dict, context: object) -> dict:
-    raise NotImplementedError
+"""af-dev-api: REST endpoints of contracts/api.md (P4, P5, P7, P10). Owner: Rol 2.
+
+Trigger: API Gateway HTTP API (payload v2) with Cognito JWT authorizer. Also accepts REST API (v1) events.
+Env: AF_TABLE_NAME, AF_AUTH_DISABLED=true only for local tests without Cognito.
+POST /simulator/faults is served by af-dev-fault-injector, not here.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import routes
+from af_shared.ddb import get_table, now_iso
+from af_shared.http import ApiError, error, respond
+from af_shared.log import get_logger
+
+logger = get_logger("api")
+_clients: dict[str, Any] = {}
+
+
+def route(event: dict[str, Any], table: Any, sfn: Any, now: str) -> dict[str, Any]:
+    http = event.get("requestContext", {}).get("http") or {}
+    method = (http.get("method") or event.get("httpMethod") or "GET").upper()
+    path = event.get("rawPath") or event.get("path") or "/"
+    stage = event.get("requestContext", {}).get("stage")
+    if stage and stage != "$default" and path.startswith(f"/{stage}/"):
+        path = path[len(stage) + 1 :]
+    if method == "OPTIONS":
+        return respond(204, {})
+    try:
+        (_, _, fn, allowed, status), params = routes.match(method, path)
+        ctx = routes.Ctx(table, sfn, now, event, params)
+        if os.environ.get("AF_AUTH_DISABLED") != "true" and not ctx.groups & allowed:
+            if not ctx.groups:
+                raise ApiError(401, "UNAUTHORIZED", "Missing Cognito groups in the token")
+            raise ApiError(403, "FORBIDDEN", f"Requires one of: {', '.join(sorted(allowed))}")
+        return respond(status, fn(ctx))
+    except ApiError as exc:
+        if exc.status >= 500:
+            logger.exception("api error", path=path)
+        return error(exc)
+    except Exception:
+        logger.exception("unhandled api error", path=path, method=method)
+        return error(ApiError(500, "INTERNAL", "Unexpected error"))
+
+
+def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
+    if not _clients:
+        import boto3
+
+        _clients["table"] = get_table()
+        _clients["sfn"] = boto3.client("stepfunctions")
+    return route(event, _clients["table"], _clients["sfn"], now_iso())

@@ -1,0 +1,33 @@
+{
+  "items": [
+    {
+      "machineId": "EXC-0042",
+      "date": "2026-11-12",
+      "utilization": 0.88,
+      "operatingHours": 21.1,
+      "idleHours": 2.9,
+      "overuseHours": 1.5,
+      "watchHours": 0.5,
+      "loadRatio": 1.08,
+      "litersPerTon": 0.42,
+      "costPerHourUsd": 191,
+      "fuelAnomaly": false
+    },
+    {
+      "machineId": "HTK-0103",
+      "date": "2026-11-12",
+      "utilization": 0.84,
+      "operatingHours": 21.1,
+      "idleHours": 2.9,
+      "overuseHours": 1.5,
+      "watchHours": 0.5,
+      "loadRatio": 1.08,
+      "litersPerTon": 0.42,
+      "costPerHourUsd": 191,
+      "fuelAnomaly": false
+    }
+  ],
+  "count": 2,
+  "nextToken": null,
+  "date": "2026-11-12"
+}

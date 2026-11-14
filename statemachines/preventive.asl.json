@@ -1,30 +1,195 @@
 {
-  "Comment": "af-dev-preventive: skeleton (Pass states). Triggered daily by EventBridge Scheduler. Owner: Rol 2",
+  "Comment": "af-dev-preventive (P2, P3). Trigger: EventBridge Scheduler daily with input {\"operationId\": \"MINA-NORTE\"}. Owner: Rol 2",
   "StartAt": "LoadMachines",
   "States": {
-    "LoadMachines": { "Type": "Pass", "Result": { "machines": [] }, "Next": "ForEachMachine" },
+    "LoadMachines": {
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "load_machines",
+        "operationId.$": "$.operationId"
+      },
+      "ResultPath": "$.load",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "ForEachMachine"
+    },
     "ForEachMachine": {
       "Type": "Map",
-      "ItemsPath": "$.machines",
+      "ItemsPath": "$.load.machines",
+      "ItemSelector": {
+        "machine.$": "$$.Map.Item.Value",
+        "operationId.$": "$.operationId"
+      },
       "MaxConcurrency": 20,
       "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
         "StartAt": "ComputeDueHours",
         "States": {
-          "ComputeDueHours": { "Type": "Pass", "Next": "IsDue" },
+          "ComputeDueHours": {
+            "Comment": "effective interval = base / usage factor (1.0 - 1.5)",
+            "Type": "Task",
+            "Resource": "${incident_tasks_arn}",
+            "Parameters": {
+              "action": "compute_due",
+              "machine.$": "$.machine",
+              "operationId.$": "$.operationId"
+            },
+            "ResultPath": "$.due",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ClientError"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }
+            ],
+            "Next": "IsDue"
+          },
           "IsDue": {
             "Type": "Choice",
-            "Choices": [{ "Variable": "$.isDue", "BooleanEquals": true, "Next": "CreateMaintenanceOrder" }],
+            "Choices": [
+              {
+                "Variable": "$.due.isDue",
+                "BooleanEquals": true,
+                "Next": "CreateMaintenanceOrder"
+              }
+            ],
             "Default": "NotDue"
           },
-          "CreateMaintenanceOrder": { "Type": "Pass", "Next": "CheckPartsAvailability" },
-          "CheckPartsAvailability": { "Type": "Pass", "End": true },
-          "NotDue": { "Type": "Succeed" }
+          "CreateMaintenanceOrder": {
+            "Type": "Task",
+            "Resource": "${incident_tasks_arn}",
+            "Parameters": {
+              "action": "create_maintenance_order",
+              "due.$": "$.due"
+            },
+            "ResultPath": "$.order",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ClientError"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }
+            ],
+            "Next": "CheckPartsAvailability"
+          },
+          "CheckPartsAvailability": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.order.partsOk",
+                "BooleanEquals": true,
+                "Next": "OrderReady"
+              }
+            ],
+            "Default": "OrderWaitingParts"
+          },
+          "OrderReady": {
+            "Type": "Pass",
+            "Parameters": {
+              "machineId.$": "$.machine.machineId",
+              "order.$": "$.order"
+            },
+            "End": true
+          },
+          "OrderWaitingParts": {
+            "Type": "Pass",
+            "Parameters": {
+              "machineId.$": "$.machine.machineId",
+              "order.$": "$.order"
+            },
+            "End": true
+          },
+          "NotDue": {
+            "Type": "Pass",
+            "Parameters": {
+              "machineId.$": "$.machine.machineId",
+              "remainingHours.$": "$.due.remainingHours"
+            },
+            "End": true
+          }
         }
       },
-      "Next": "GroupOrdersByZone"
+      "ResultPath": "$.results",
+      "Next": "ReorderPartsIfNeeded"
     },
-    "GroupOrdersByZone": { "Type": "Pass", "Next": "ReorderPartsIfNeeded" },
-    "ReorderPartsIfNeeded": { "Type": "Pass", "Next": "SendDailySummary" },
-    "SendDailySummary": { "Type": "Pass", "End": true }
+    "ReorderPartsIfNeeded": {
+      "Comment": "Groups orders by zone; compares stock with the BigQuery forecast",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "plan_restock",
+        "results.$": "$.results"
+      },
+      "ResultPath": "$.plan",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "SendDailySummary"
+    },
+    "SendDailySummary": {
+      "Comment": "Maintenance lead + management",
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "DAILY_SUMMARY",
+        "summary.$": "$.plan.summary"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    }
   }
 }

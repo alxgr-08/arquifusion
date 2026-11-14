@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "maintenanceId": "MNT-e19f",
+      "type": "CORRECTIVE",
+      "incidentId": "INC-ab42",
+      "machineId": "EXC-0042",
+      "date": "2026-11-10",
+      "at": "2026-11-10T11:08:30Z",
+      "techId": "T-04",
+      "failureMode": "BEARING_WEAR",
+      "partsUsed": [
+        {
+          "partId": "BRG-KIT-02",
+          "warehouseId": "WH-SUR",
+          "qty": 1
+        }
+      ],
+      "downtimeMinutes": 116,
+      "notes": null
+    }
+  ],
+  "count": 1,
+  "nextToken": null
+}

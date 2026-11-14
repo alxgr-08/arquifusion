@@ -99,3 +99,36 @@ class AnomalyDetected(BaseModel):
     detail: AnomalyDetail
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# --- ai-diagnosis (PROPOSAL v1.0: contracts/ai-diagnosis.*.schema.json) ---------------------------------------
+class PartRequest(_Strict):
+    part_id: str = Field(alias="partId")
+    qty: int = Field(ge=1)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class RoleMessages(_Strict):
+    operator: str = Field(alias="OPERATOR")
+    technician: str = Field(alias="TECHNICIAN")
+    maint_lead: str = Field(alias="MAINT_LEAD")
+    supervisor: str = Field(alias="SUPERVISOR")
+    manager: str = Field(alias="MANAGER")
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class AiDiagnosisResponse(_Strict):
+    schema_version: Literal["1.0"] = Field(default="1.0", alias="schemaVersion")
+    source: Literal["BEDROCK", "GEMINI", "RULES"]
+    failure_mode: str = Field(alias="failureMode")
+    diagnosis: str = Field(max_length=400)
+    confidence: float = Field(ge=0, le=1)
+    recommended_parts: list[PartRequest] = Field(alias="recommendedParts")
+    required_specialty: Literal["HYDRAULIC", "MECHANICAL", "ENGINE", "ELECTRICAL"] = Field(alias="requiredSpecialty")
+    operator_action: Literal["STOP", "CONTINUE_WITH_CAUTION", "CONTINUE"] = Field(alias="operatorAction")
+    messages: RoleMessages
+    zone_hypothesis: str | None = Field(default=None, alias="zoneHypothesis")
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
