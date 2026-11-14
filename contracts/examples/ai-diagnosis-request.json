@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "anomaly": {
+    "schemaVersion": "1.0",
+    "machineId": "EXC-0042",
+    "operationId": "MINA-NORTE",
+    "zoneId": "Z3",
+    "model": "EXC-320",
+    "detectedAt": "2026-11-13T14:06:10Z",
+    "healthScore": 38,
+    "severity": "CRITICAL",
+    "signals": [
+      { "metric": "temperatureC", "value": 92.4, "baseline": 78.1, "zScore": 3.1, "trend": "RISING" },
+      { "metric": "vibrationMmS", "value": 7.8, "baseline": 4.2, "zScore": 2.6, "trend": "RISING" }
+    ],
+    "comparedAgainst": ["OWN_HISTORY", "MODEL_FLEET"]
+  },
+  "machine": { "status": "OPERATING", "engineHours": 12450.5, "lastMaintenanceHours": 12000 },
+  "context": { "fuelBatchId": "FB-1120", "ambientTempC": 31.0 },
+  "history": [
+    { "type": "MAINTENANCE", "at": "2026-10-20T09:00:00Z", "summary": "Preventive 500 h service", "partsReplaced": ["FLT-HID-01"] }
+  ],
+  "zoneCorrelation": [
+    { "machineId": "TRK-0107", "model": "HT-793", "detectedAt": "2026-11-13T13:40:00Z", "severity": "WARNING", "topMetric": "fuelRateLph", "fuelBatchId": "FB-1120" },
+    { "machineId": "LDR-0011", "model": "LD-980", "detectedAt": "2026-11-13T13:55:00Z", "severity": "WARNING", "topMetric": "fuelRateLph", "fuelBatchId": "FB-1120" }
+  ]
+}

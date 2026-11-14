@@ -1,51 +1,51 @@
-{
-  "items": [
-    {
-      "machineId": "DZR-0301",
-      "model": "DZR-D10",
-      "machineType": "BULLDOZER",
-      "zoneId": "Z2",
-      "lat": -23.6398,
-      "lon": -70.3821,
-      "status": "OPERATING",
-      "healthScore": 100,
-      "severity": "OK",
-      "lastSeen": null,
-      "engineHours": 13020,
-      "openIncidentId": null,
-      "openIncidentSeverity": null
-    },
-    {
-      "machineId": "DZR-0302",
-      "model": "DZR-D10",
-      "machineType": "BULLDOZER",
-      "zoneId": "Z4",
-      "lat": -23.6633,
-      "lon": -70.4188,
-      "status": "OPERATING",
-      "healthScore": 100,
-      "severity": "OK",
-      "lastSeen": null,
-      "engineHours": 5540,
-      "openIncidentId": null,
-      "openIncidentSeverity": null
-    },
-    {
-      "machineId": "EXC-0017",
-      "model": "EXC-320",
-      "machineType": "EXCAVATOR",
-      "zoneId": "Z1",
-      "lat": -23.6312,
-      "lon": -70.4105,
-      "status": "OPERATING",
-      "healthScore": 100,
-      "severity": "OK",
-      "lastSeen": null,
-      "engineHours": 8210,
-      "openIncidentId": null,
-      "openIncidentSeverity": null
-    }
-  ],
-  "count": 3,
-  "nextToken": "eyJTSyI6ICJQUk9GSUxFIiwgIlBLIjogIk1BQ0hJTkUjRVhDLTAwMTciLCAiR1NJMVNLIjogIk9QRVJBVElORyNFWEMtMDAxNyIsICJHU0kxUEsiOiAiT1AjTUlOQS1OT1JURSNNQUNISU5FIn0="
-}
+[
+  {
+    "machineId": "DOZ-0007",
+    "model": "BD-850",
+    "machineType": "BULLDOZER",
+    "operationId": "MINA-NORTE",
+    "zoneId": "Z2",
+    "lat": -23.6078,
+    "lon": -69.9905,
+    "status": "OPERATING",
+    "healthScore": 100,
+    "severity": "OK",
+    "lastSeen": "2026-11-14T22:39:59Z",
+    "engineHours": 13350,
+    "lastMaintenanceHours": 12950,
+    "maintenanceIntervalHours": 450
+  },
+  {
+    "machineId": "DRL-0003",
+    "model": "DR-400",
+    "machineType": "DRILL",
+    "operationId": "MINA-NORTE",
+    "zoneId": "Z4",
+    "lat": -23.6122,
+    "lon": -69.9701,
+    "status": "OPERATING",
+    "healthScore": 100,
+    "severity": "OK",
+    "lastSeen": "2026-11-14T22:39:59Z",
+    "engineHours": 5600,
+    "lastMaintenanceHours": 5250,
+    "maintenanceIntervalHours": 400
+  },
+  {
+    "machineId": "EXC-0042",
+    "model": "EXC-320",
+    "machineType": "EXCAVATOR",
+    "operationId": "MINA-NORTE",
+    "zoneId": "Z3",
+    "lat": -23.6009,
+    "lon": -69.9775,
+    "status": "OPERATING",
+    "healthScore": 100,
+    "severity": "OK",
+    "lastSeen": "2026-11-14T22:39:59Z",
+    "engineHours": 12450,
+    "lastMaintenanceHours": 12450,
+    "maintenanceIntervalHours": 500,
+    "openIncidentId": "INC-d040"
+  }
+]

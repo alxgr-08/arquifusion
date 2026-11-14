@@ -1,25 +1,12 @@
-{
-  "items": [
-    {
-      "maintenanceId": "MNT-e19f",
-      "type": "CORRECTIVE",
-      "incidentId": "INC-ab42",
-      "machineId": "EXC-0042",
-      "date": "2026-11-10",
-      "at": "2026-11-10T11:08:30Z",
-      "techId": "T-04",
-      "failureMode": "BEARING_WEAR",
-      "partsUsed": [
-        {
-          "partId": "BRG-KIT-02",
-          "warehouseId": "WH-SUR",
-          "qty": 1
-        }
-      ],
-      "downtimeMinutes": 116,
-      "notes": null
-    }
-  ],
-  "count": 1,
-  "nextToken": null
-}
+[
+  {
+    "maintenanceId": "MNT-INC-342e",
+    "date": "2026-11-10T11:08:30Z",
+    "type": "CORRECTIVE",
+    "engineHours": 12450,
+    "partsReplaced": [
+      "BRG-SPH-22"
+    ],
+    "notes": "BEARING: Inspeccionar rodamientos y lubricación; reemplazar si hay holgura o ruido."
+  }
+]

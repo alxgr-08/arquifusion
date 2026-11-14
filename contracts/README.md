@@ -6,6 +6,8 @@ The only dependency between team members. Any change requires a PR approved by a
 |---|---|---|
 | `telemetry.schema.json` | simulator (Rol 2) | health-evaluator (Rol 3), Firehose/BigQuery (Rol 1) |
 | `anomaly-detected.schema.json` | health-evaluator (Rol 3) | incident Step Function (Rol 2) |
+| `ai-diagnosis-request.schema.json` | incident Step Function (Rol 2) | ai-diagnosis (Rol 3) |
+| `ai-diagnosis-response.schema.json` | ai-diagnosis (Rol 3) | incident Step Function, notify (Rol 2) |
 | `api.md` | api-* (Rol 2) | frontend (Rol 3) |
 
 Validate locally: `python scripts/validate_contracts.py`

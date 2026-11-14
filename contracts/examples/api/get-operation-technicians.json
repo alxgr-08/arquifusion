@@ -1,82 +1,61 @@
-{
-  "items": [
-    {
-      "techId": "T-04",
-      "operationId": "MINA-NORTE",
-      "name": "Diego Flores",
-      "specialties": [
-        "MECHANICAL"
-      ],
-      "lat": -23.6581,
-      "lon": -70.4052,
-      "availability": "ASSIGNED",
-      "queueLength": 1,
-      "currentIncidentId": "INC-3f94"
-    },
-    {
-      "techId": "T-01",
-      "operationId": "MINA-NORTE",
-      "name": "Rosa Quispe",
-      "specialties": [
-        "HYDRAULIC",
-        "MECHANICAL"
-      ],
-      "lat": -23.629,
-      "lon": -70.4001,
-      "availability": "AVAILABLE",
-      "queueLength": 0
-    },
-    {
-      "techId": "T-02",
-      "operationId": "MINA-NORTE",
-      "name": "Jorge Mamani",
-      "specialties": [
-        "ENGINE"
-      ],
-      "lat": -23.629,
-      "lon": -70.4001,
-      "availability": "AVAILABLE",
-      "queueLength": 0
-    },
-    {
-      "techId": "T-03",
-      "operationId": "MINA-NORTE",
-      "name": "Lucia Torres",
-      "specialties": [
-        "ELECTRICAL",
-        "ENGINE"
-      ],
-      "lat": -23.6581,
-      "lon": -70.4052,
-      "availability": "AVAILABLE",
-      "queueLength": 0
-    },
-    {
-      "techId": "T-05",
-      "operationId": "MINA-NORTE",
-      "name": "Ana Rojas",
-      "specialties": [
-        "HYDRAULIC"
-      ],
-      "lat": -23.6398,
-      "lon": -70.3821,
-      "availability": "AVAILABLE",
-      "queueLength": 0
-    },
-    {
-      "techId": "T-07",
-      "operationId": "MINA-NORTE",
-      "name": "Carlos Huaman",
-      "specialties": [
-        "MECHANICAL",
-        "ENGINE"
-      ],
-      "lat": -23.6633,
-      "lon": -70.4188,
-      "availability": "AVAILABLE",
-      "queueLength": 0
-    }
-  ],
-  "count": 6,
-  "nextToken": null
-}
+[
+  {
+    "techId": "T-03",
+    "name": "Rosa Quispe",
+    "specialties": [
+      "BEARING",
+      "DRIVETRAIN"
+    ],
+    "availability": "AVAILABLE",
+    "lat": -23.5955,
+    "lon": -69.984,
+    "queue": 0
+  },
+  {
+    "techId": "T-09",
+    "name": "Lucía Torres",
+    "specialties": [
+      "ENGINE",
+      "FUEL_SYSTEM"
+    ],
+    "availability": "AVAILABLE",
+    "lat": -23.61,
+    "lon": -69.972,
+    "queue": 0
+  },
+  {
+    "techId": "T-12",
+    "name": "Carlos Rojas",
+    "specialties": [
+      "COOLING_SYSTEM",
+      "ENGINE"
+    ],
+    "availability": "AVAILABLE",
+    "lat": -23.607,
+    "lon": -69.99,
+    "queue": 0
+  },
+  {
+    "techId": "T-15",
+    "name": "Ana Flores",
+    "specialties": [
+      "HYDRAULIC_SYSTEM"
+    ],
+    "availability": "AVAILABLE",
+    "lat": -23.6,
+    "lon": -69.98,
+    "queue": 0
+  },
+  {
+    "techId": "T-07",
+    "name": "Jorge Mamani",
+    "specialties": [
+      "HYDRAULIC_SYSTEM",
+      "BEARING"
+    ],
+    "availability": "BUSY",
+    "lat": -23.603,
+    "lon": -69.979,
+    "queue": 1
+  }
+]

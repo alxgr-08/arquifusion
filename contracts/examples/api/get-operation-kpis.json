@@ -1,33 +1,32 @@
-{
-  "items": [
-    {
-      "machineId": "EXC-0042",
-      "date": "2026-11-12",
-      "utilization": 0.88,
-      "operatingHours": 21.1,
-      "idleHours": 2.9,
-      "overuseHours": 1.5,
-      "watchHours": 0.5,
-      "loadRatio": 1.08,
-      "litersPerTon": 0.42,
-      "costPerHourUsd": 191,
-      "fuelAnomaly": false
-    },
-    {
-      "machineId": "HTK-0103",
-      "date": "2026-11-12",
-      "utilization": 0.84,
-      "operatingHours": 21.1,
-      "idleHours": 2.9,
-      "overuseHours": 1.5,
-      "watchHours": 0.5,
-      "loadRatio": 1.08,
-      "litersPerTon": 0.42,
-      "costPerHourUsd": 191,
-      "fuelAnomaly": false
-    }
-  ],
-  "count": 2,
-  "nextToken": null,
-  "date": "2026-11-12"
-}
+[
+  {
+    "machineId": "EXC-0042",
+    "model": "EXC-320",
+    "date": "2026-11-12",
+    "utilizationPct": 72,
+    "idleHours": 6.7,
+    "overuseHours": 0.5,
+    "tonsMoved": 1950,
+    "fuelLitersPerTon": 1.74,
+    "costPerHour": 195,
+    "fuelAnomaly": false,
+    "operatingHours": 17.3,
+    "clusterLabel": "Carga alta",
+    "fuelLitersPerTonFleet": 1.7
+  },
+  {
+    "machineId": "TRK-0103",
+    "model": "HT-793",
+    "date": "2026-11-12",
+    "utilizationPct": 84,
+    "idleHours": 6.7,
+    "overuseHours": 0.5,
+    "tonsMoved": 1950,
+    "fuelLitersPerTon": 1.74,
+    "costPerHour": 195,
+    "fuelAnomaly": false,
+    "operatingHours": 17.3,
+    "clusterLabel": "Carga alta",
+    "fuelLitersPerTonFleet": 1.7
+  }
+]
