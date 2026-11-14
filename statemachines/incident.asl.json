@@ -1,32 +1,994 @@
 {
-  "Comment": "af-dev-incident: skeleton (Pass states). Triggered by EventBridge AnomalyDetected (WARNING/CRITICAL). Owner: Rol 2",
+  "Comment": "af-dev-incident (P1, P3, P5, P9, P10, P11). Trigger: EventBridge rule on AnomalyDetected (WARNING/CRITICAL). Placeholders ${...} are filled by Terraform templatefile(). Owner: Rol 2",
   "StartAt": "ValidateEvent",
   "States": {
-    "ValidateEvent": { "Type": "Pass", "Next": "EnrichContext" },
+    "ValidateEvent": {
+      "Comment": "Validates the contract and claims one open incident per machine (conditional write)",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "claim",
+        "event.$": "$"
+      },
+      "ResultPath": "$.incident",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "InvalidEvent"
+        }
+      ],
+      "Next": "IsDuplicate"
+    },
+    "IsDuplicate": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.incident.duplicate",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.incident.escalated",
+              "BooleanEquals": true
+            }
+          ],
+          "Next": "NotifyEscalation"
+        },
+        {
+          "Variable": "$.incident.duplicate",
+          "BooleanEquals": true,
+          "Next": "DuplicateIgnored"
+        }
+      ],
+      "Default": "InitAssignment"
+    },
+    "NotifyEscalation": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "ESCALATED",
+        "incident.$": "$.incident"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "DuplicateIgnored"
+        }
+      ],
+      "Next": "DuplicateIgnored"
+    },
+    "DuplicateIgnored": {
+      "Type": "Succeed",
+      "Comment": "Machine already has an open incident"
+    },
+    "InitAssignment": {
+      "Type": "Pass",
+      "Result": {
+        "attempt": 0,
+        "excluded": []
+      },
+      "ResultPath": "$.assignment",
+      "Next": "EnrichContext"
+    },
     "EnrichContext": {
       "Type": "Parallel",
       "Branches": [
-        { "StartAt": "GetMachineProfile", "States": { "GetMachineProfile": { "Type": "Pass", "End": true } } },
-        { "StartAt": "GetRecentHistory", "States": { "GetRecentHistory": { "Type": "Pass", "End": true } } },
-        { "StartAt": "FindZoneCorrelation", "States": { "FindZoneCorrelation": { "Type": "Pass", "End": true } } }
+        {
+          "StartAt": "GetMachineProfile",
+          "States": {
+            "GetMachineProfile": {
+              "Type": "Task",
+              "Resource": "${incident_tasks_arn}",
+              "Parameters": {
+                "action": "get_profile",
+                "incident.$": "$.incident"
+              },
+              "ResultPath": "$",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException",
+                    "ClientError"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "GetRecentHistory",
+          "States": {
+            "GetRecentHistory": {
+              "Type": "Task",
+              "Resource": "${incident_tasks_arn}",
+              "Parameters": {
+                "action": "get_history",
+                "incident.$": "$.incident"
+              },
+              "ResultPath": "$",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException",
+                    "ClientError"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "FindZoneCorrelation",
+          "States": {
+            "FindZoneCorrelation": {
+              "Type": "Task",
+              "Resource": "${incident_tasks_arn}",
+              "Parameters": {
+                "action": "find_zone_correlation",
+                "incident.$": "$.incident"
+              },
+              "ResultPath": "$",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException",
+                    "ClientError"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        }
       ],
+      "ResultSelector": {
+        "profile.$": "$[0]",
+        "history.$": "$[1]",
+        "zone.$": "$[2]"
+      },
       "ResultPath": "$.context",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
       "Next": "AIDiagnosis"
     },
-    "AIDiagnosis": { "Type": "Pass", "Comment": "Lambda af-dev-ai-diagnosis (Rol 3)", "Next": "CreateIncident" },
-    "CreateIncident": { "Type": "Pass", "Next": "IsZoneIncident" },
+    "AIDiagnosis": {
+      "Comment": "af-dev-ai-diagnosis (Rol 3, Bedrock/Gemini). Any error or timeout falls back to rules",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ai_diagnosis_arn}",
+        "Payload": {
+          "schemaVersion": "1.0",
+          "incidentId.$": "$.incident.incidentId",
+          "anomaly.$": "$.incident.anomaly",
+          "machine.$": "$.context.profile",
+          "history.$": "$.context.history",
+          "zone.$": "$.context.zone",
+          "candidateFailureModes.$": "$.context.profile.candidateFailureModes"
+        }
+      },
+      "TimeoutSeconds": 45,
+      "ResultSelector": {
+        "response.$": "$.Payload"
+      },
+      "ResultPath": "$.ai",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.aiError",
+          "Next": "RuleDiagnosis"
+        }
+      ],
+      "Next": "CreateIncident"
+    },
+    "RuleDiagnosis": {
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "rule_diagnosis",
+        "incident.$": "$.incident",
+        "context.$": "$.context"
+      },
+      "ResultPath": "$.ai",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "CreateIncident",
+      "ResultSelector": {
+        "response.$": "$"
+      }
+    },
+    "CreateIncident": {
+      "Comment": "Validates the AI answer (falls back to rules if invalid) and writes the incident",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "create_incident",
+        "incident.$": "$.incident",
+        "context.$": "$.context",
+        "ai.$": "$.ai"
+      },
+      "ResultPath": "$.created",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "IsZoneIncident"
+    },
     "IsZoneIncident": {
       "Type": "Choice",
-      "Choices": [{ "Variable": "$.zoneIncident", "BooleanEquals": true, "Next": "CreateZoneIncident" }],
+      "Choices": [
+        {
+          "Variable": "$.created.zoneIncident",
+          "BooleanEquals": true,
+          "Next": "CreateZoneIncident"
+        }
+      ],
       "Default": "ReserveParts"
     },
-    "CreateZoneIncident": { "Type": "Pass", "Next": "ReserveParts" },
-    "ReserveParts": { "Type": "Pass", "Next": "AssignTechnician" },
-    "AssignTechnician": { "Type": "Pass", "Next": "NotifyByRole" },
-    "NotifyByRole": { "Type": "Pass", "Next": "WaitForTechnician" },
-    "WaitForTechnician": { "Type": "Pass", "Comment": ".waitForTaskToken, timeout 30 min", "Next": "WaitForResolution" },
-    "WaitForResolution": { "Type": "Pass", "Comment": ".waitForTaskToken", "Next": "CloseIncident" },
-    "CloseIncident": { "Type": "Pass", "Next": "UpdateMachineState" },
-    "UpdateMachineState": { "Type": "Pass", "End": true }
+    "CreateZoneIncident": {
+      "Comment": "3+ machines in the zone within the window (P11)",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "create_zone_incident",
+        "incident.$": "$.incident",
+        "created.$": "$.created",
+        "context.$": "$.context"
+      },
+      "ResultPath": "$.zoneIncident",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.zoneError",
+          "Next": "ReserveParts"
+        }
+      ],
+      "Next": "NotifyZoneIncident"
+    },
+    "NotifyZoneIncident": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "ZONE_INCIDENT",
+        "incident.$": "$.incident",
+        "diagnosis.$": "$.created.diagnosis",
+        "zoneIncident.$": "$.zoneIncident"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "ReserveParts"
+        }
+      ],
+      "Next": "ReserveParts"
+    },
+    "ReserveParts": {
+      "Comment": "Conditional UpdateItem on STOCK#: two incidents cannot take the last part (P3)",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "reserve_parts",
+        "incident.$": "$.incident",
+        "context.$": "$.context",
+        "created.$": "$.created"
+      },
+      "ResultPath": "$.parts",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "HasMissingParts"
+    },
+    "HasMissingParts": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.parts.hasMissing",
+          "BooleanEquals": true,
+          "Next": "NotifyRestock"
+        }
+      ],
+      "Default": "AssignTechnician"
+    },
+    "NotifyRestock": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "RESTOCK",
+        "incident.$": "$.incident",
+        "parts.$": "$.parts"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "AssignTechnician"
+        }
+      ],
+      "Next": "AssignTechnician"
+    },
+    "AssignTechnician": {
+      "Comment": "cost = ETA + 60*(no specialty) + 15*(queue); ETA from Amazon Location (P5)",
+      "Type": "Task",
+      "Resource": "${assign_technician_arn}",
+      "Parameters": {
+        "action": "assign",
+        "incident.$": "$.incident",
+        "assignment.$": "$.assignment",
+        "diagnosis.$": "$.created.diagnosis",
+        "profile.$": "$.context.profile"
+      },
+      "ResultPath": "$.assignment",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "TechnicianAssigned"
+    },
+    "TechnicianAssigned": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.assignment.assigned",
+          "BooleanEquals": true,
+          "Next": "NotifyByRole"
+        },
+        {
+          "Variable": "$.assignment.attempt",
+          "NumericLessThanPath": "$.incident.settings.maxAssignAttempts",
+          "Next": "WaitBeforeRetry"
+        }
+      ],
+      "Default": "NotifyNoTechnician"
+    },
+    "NotifyNoTechnician": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "NO_TECHNICIAN",
+        "incident.$": "$.incident"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "ResetAttempts"
+        }
+      ],
+      "Next": "ResetAttempts"
+    },
+    "ResetAttempts": {
+      "Type": "Pass",
+      "Result": {
+        "attempt": 0,
+        "excluded": []
+      },
+      "ResultPath": "$.assignment",
+      "Next": "WaitBeforeRetry"
+    },
+    "WaitBeforeRetry": {
+      "Type": "Wait",
+      "SecondsPath": "$.incident.settings.noTechnicianRetrySeconds",
+      "Next": "AssignTechnician"
+    },
+    "NotifyByRole": {
+      "Comment": "Role x severity matrix (P9): one SNS topic per role, filtered by severity",
+      "Type": "Map",
+      "ItemsPath": "$.incident.roles",
+      "ItemSelector": {
+        "kind": "INCIDENT",
+        "role.$": "$$.Map.Item.Value",
+        "incident.$": "$.incident",
+        "diagnosis.$": "$.created.diagnosis",
+        "assignment.$": "$.assignment",
+        "parts.$": "$.parts"
+      },
+      "MaxConcurrency": 5,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "NotifyRole",
+        "States": {
+          "NotifyRole": {
+            "Type": "Task",
+            "Resource": "${notify_arn}",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ClientError"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "Next": "RoleNotifyFailed"
+              }
+            ],
+            "End": true
+          },
+          "RoleNotifyFailed": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "WaitForTechnician"
+    },
+    "WaitForTechnician": {
+      "Comment": "Technician confirms arrival from the web (POST .../ack). Timeout -> reassign + escalate",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${incident_tasks_arn}",
+        "Payload": {
+          "action": "store_task_token",
+          "stage": "ARRIVAL",
+          "taskToken.$": "$$.Task.Token",
+          "incident.$": "$.incident"
+        }
+      },
+      "TimeoutSecondsPath": "$.incident.settings.techAckTimeoutSeconds",
+      "ResultPath": "$.arrival",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.Timeout"
+          ],
+          "ResultPath": "$.timeout",
+          "Next": "ReleaseTechnician"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "WaitForResolution"
+    },
+    "ReleaseTechnician": {
+      "Type": "Task",
+      "Resource": "${assign_technician_arn}",
+      "Parameters": {
+        "action": "release",
+        "incident.$": "$.incident",
+        "assignment.$": "$.assignment"
+      },
+      "ResultPath": "$.assignment",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "NotifyTechTimeout"
+    },
+    "NotifyTechTimeout": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "TECH_TIMEOUT",
+        "incident.$": "$.incident",
+        "assignment.$": "$.assignment"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "AssignTechnician"
+        }
+      ],
+      "Next": "AssignTechnician"
+    },
+    "WaitForResolution": {
+      "Comment": "Technician closes the incident from the web (POST .../ack RESOLVED)",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${incident_tasks_arn}",
+        "Payload": {
+          "action": "store_task_token",
+          "stage": "RESOLUTION",
+          "taskToken.$": "$$.Task.Token",
+          "incident.$": "$.incident"
+        }
+      },
+      "TimeoutSecondsPath": "$.incident.settings.resolutionTimeoutSeconds",
+      "ResultPath": "$.resolution",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.Timeout"
+          ],
+          "ResultPath": "$.timeout",
+          "Next": "NotifyLongDowntime"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "CloseIncident"
+    },
+    "NotifyLongDowntime": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "LONG_DOWNTIME",
+        "incident.$": "$.incident"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "WaitForResolution"
+        }
+      ],
+      "Next": "WaitForResolution"
+    },
+    "CloseIncident": {
+      "Comment": "Downtime, parts used, recurrenceOf, MAINT# record, frees technician (P10)",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "close_incident",
+        "incident.$": "$.incident",
+        "resolution.$": "$.resolution"
+      },
+      "ResultPath": "$.closed",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "UpdateMachineState"
+    },
+    "UpdateMachineState": {
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "update_machine_state",
+        "incident.$": "$.incident"
+      },
+      "ResultPath": "$.machine",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.machineError",
+          "Next": "NotifyResolved"
+        }
+      ],
+      "Next": "NotifyResolved"
+    },
+    "NotifyResolved": {
+      "Type": "Task",
+      "Resource": "${notify_arn}",
+      "Parameters": {
+        "kind": "RESOLVED",
+        "incident.$": "$.incident",
+        "closed.$": "$.closed"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.notifyError",
+          "Next": "Done"
+        }
+      ],
+      "Next": "Done"
+    },
+    "Done": {
+      "Type": "Succeed"
+    },
+    "HandleFailure": {
+      "Comment": "Frees the machine so a later anomaly can open a new incident",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "release_claim",
+        "incident.$": "$.incident",
+        "error.$": "$.error"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "IncidentFailed"
+        }
+      ],
+      "Next": "IncidentFailed"
+    },
+    "IncidentFailed": {
+      "Type": "Fail",
+      "Error": "IncidentFlowFailed",
+      "Cause": "See the HandleFailure input"
+    },
+    "InvalidEvent": {
+      "Type": "Fail",
+      "Error": "InvalidAnomalyEvent",
+      "Cause": "AnomalyDetected did not match contracts/anomaly-detected.schema.json"
+    }
   }
 }
