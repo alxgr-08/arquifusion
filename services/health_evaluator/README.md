@@ -28,6 +28,34 @@
 Weights and thresholds are overridable from SSM `/af/health/weights` and `/af/health/thresholds`
 (`HealthConfig.from_params`).
 
+## Handler (`handler.py`)
+
+1. Validate the payload against `contracts/telemetry` (invalid -> logged and dropped, no retry).
+2. Read `PROFILE` and `MODEL#{model} BASELINE`, run `scoring.evaluate`.
+3. One transaction: put `READING#{ts}` (TTL `expiresAt` = ts + 48 h, `attribute_not_exists(SK)` drops MQTT duplicates)
+   and update `PROFILE` (condition `lastSeen < ts` drops out-of-order readings; `GSI1SK` only rewritten on status change).
+4. If severity rose into WARNING/CRITICAL, publish `AnomalyDetected` (validated with `af_shared`) to the event bus.
+
+The profile update only SETs its own attributes, so fields owned by Rol 2 (`openIncidentSK`, `lastMaintenanceHours`)
+are never overwritten.
+
+### Deployment (Rol 1)
+
+| Setting | Value |
+|---|---|
+| Runtime / handler | Python 3.12 · `handler.handler` (package with `scoring.py` and `shared/af_shared`) |
+| Trigger | IoT Rule `SELECT * FROM 'arquifusion/+/+/telemetry'` -> Lambda action |
+| Env | `AF_TABLE_NAME`, `AF_EVENT_BUS`, `AF_SSM_HEALTH_WEIGHTS`, `AF_SSM_HEALTH_THRESHOLDS`, `POWERTOOLS_SERVICE_NAME` |
+| Permissions | DynamoDB GetItem/TransactWriteItems, events:PutEvents, ssm:GetParameter (LabRole in Academy) |
+| Memory / timeout | 256 MB / 10 s |
+
+### Model baseline item (written by bigquery-sync-back)
+
+```json
+{ "PK": "MODEL#EXC-320", "SK": "BASELINE",
+  "metrics": { "temperatureC": { "mean": 78.1, "std": 4.6 }, "vibrationMmS": { "mean": 4.2, "std": 1.4 } } }
+```
+
 ## How to test
 
 ```bash
