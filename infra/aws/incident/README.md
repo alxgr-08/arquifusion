@@ -1,5 +1,7 @@
 # Incidentes de desarrollo en AWS Academy
 
+El 15/11 el código v1.2 se desplegó y el caso ENSAYO-3816 cerró INC-a8c8 con dos recibos ACCEPTED, un mantenimiento y una pieza. La regla permanece deshabilitada. La API del ensayo se ejecutó localmente mediante IAM. Los detalles siguientes conservan el historial del primer despliegue. [Relevo y evidencia actual](../../../docs/revision-nocturna-2026-11-15.md) · [Ejecutor manual reproducible](ensayo-manual.md)
+
 ## Primer despliegue de desarrollo
 
 Rama `infra/rol1-aws-dynamodb-plan`, commit `be19d3e`. Tras `git fetch origin`, la diferencia con `origin/main` fue 0/0. Sebastián incorporó el ASL, las tareas, la asignación, las notificaciones y los callbacks en #39. El #40 integró el evaluador y el diagnóstico de Alexis y alineó la entrada de IA con `aiMachine`, `aiContext`, `aiHistory` y `aiZoneCorrelation`. La definición de incidentes del plan conserva todos los estados y comentarios de ese commit, con los cuatro ARN resueltos. [PR #39](https://github.com/alxgr-08/arquifusion/pull/39) · [PR #40](https://github.com/alxgr-08/arquifusion/pull/40)

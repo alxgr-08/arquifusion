@@ -1,5 +1,7 @@
 # ArquiFusion · relevo para Leonardo, el equipo y GPT Pro
 
+Corte histórico anterior a la publicación del PR #50 y al despliegue v1.2. El [relevo de la revisión autónoma](revision-nocturna-2026-11-15.md) registra los resultados posteriores.
+
 15 de noviembre de 2026, Lima. Repositorio `alxgr-08/arquifusion`. Leonardo es Rol 1 · arquitectura e infraestructura, Sebastián es Rol 2 · backend y operación, Alexis es Rol 3 · salud, frontend y analítica. Esta entrega se preparó sobre el commit `53f97555acb96848b1145b4e50c137a3ea2fe05a` en la rama local `infra/rol1-entrega-academy`. Los cambios de código están en el worktree `arquifusion-rol1-entrega`. Las issues ya reflejan este corte en GitHub.
 
 ## A. Resumen ejecutivo

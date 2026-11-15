@@ -1,0 +1,397 @@
+{
+  "checkedAt": "2026-11-15T10:37:55.685742+00:00",
+  "profile": "default",
+  "region": "us-east-1",
+  "managedResources": 27,
+  "deploymentSteps": [
+    {
+      "file": "base-update.tfplan",
+      "add": 0,
+      "change": 6,
+      "destroy": 0,
+      "planSha256": "26da4b982b28460a4b616db462a9f0416a9538c0854945c37f76a8ad3bbf0c4b"
+    },
+    {
+      "file": "compatibility-update.tfplan",
+      "add": 0,
+      "change": 1,
+      "destroy": 0,
+      "planSha256": "a8e2e3db6422272e5c43da4536132351352db1b987e24253146406f9c15b3791"
+    }
+  ],
+  "postApply": {
+    "apiResourcesIncluded": false,
+    "add": 0,
+    "change": 0,
+    "destroy": 0,
+    "noOp": 27,
+    "creates": [],
+    "updates": {},
+    "refreshFields": {},
+    "file": "post-compatibility.tfplan",
+    "sha256": "ed44e83a6a2b8332eec5e9c1e0a61a5a209ecb627f98c70a8c39c159de5421b5"
+  },
+  "rule": "DISABLED",
+  "table": {
+    "status": "ACTIVE",
+    "gsi": [
+      "GSI1",
+      "GSI2"
+    ],
+    "ttl": {
+      "TimeToLiveStatus": "ENABLED",
+      "AttributeName": "expiresAt"
+    },
+    "pitr": "ENABLED",
+    "deletionProtection": true,
+    "streams": {
+      "StreamEnabled": true,
+      "StreamViewType": "NEW_AND_OLD_IMAGES"
+    }
+  },
+  "backend": {
+    "key": "aws/terraform.tfstate",
+    "cipher": "AES256",
+    "versioned": true,
+    "blockPublic": {
+      "BlockPublicAcls": true,
+      "IgnorePublicAcls": true,
+      "BlockPublicPolicy": true,
+      "RestrictPublicBuckets": true
+    },
+    "bootstrap": "Separate local state untouched"
+  },
+  "packages": {
+    "af-dev-health-evaluator": "6ecf69310bebed036cb839faaa9e10157f1428ef4286071021c99b1e2ee67fc3",
+    "af-dev-incident-tasks": "4f7d0c7113c744cc102acb912f70c65fd38e3326779041f3a6320f69941bd78d",
+    "af-dev-assign-technician": "34e79937f69aafac897a0f9de66e30fdeedcde6c543fc275fc4bd6d82c229fb4",
+    "af-dev-ai-diagnosis": "ebb33f442a04ad6cf07969fe16e7a9f60c10cc861dd0f3362d813f372afa49da",
+    "af-dev-notify": "34793fa4f3ee5308a7a986b90f6cc66d030cdf3e110496f169b8ffc694f02624"
+  },
+  "health": {
+    "machine": "HEAHM-4107",
+    "operation": "AF-TEST-82A3A8F288AE",
+    "model": "AF-TEST-82A3A8F288AE40E18D2DADF11CAF763B",
+    "calls": [
+      {
+        "stage": "normal",
+        "status": "RESPONDED",
+        "requestId": "85a21418-b2c4-4764-a613-91e0ed6fa935",
+        "result": {
+          "result": "OK",
+          "healthScore": 100.0,
+          "severity": "OK",
+          "emitted": false
+        }
+      },
+      {
+        "stage": "anomaly",
+        "status": "RESPONDED",
+        "requestId": "9625bd41-5344-4b66-868f-5c2a28a5ac55",
+        "result": {
+          "result": "OK",
+          "healthScore": 0.0,
+          "severity": "CRITICAL",
+          "emitted": true
+        }
+      },
+      {
+        "stage": "duplicate-anomaly",
+        "status": "RESPONDED",
+        "requestId": "e30e63f3-7528-4ecd-b661-5914317f7291",
+        "result": {
+          "result": "SKIPPED"
+        }
+      },
+      {
+        "stage": "reconcile-delivered",
+        "status": "RESPONDED",
+        "requestId": "d1318f81-2c40-4188-a9b9-bf6f553ef454",
+        "result": {
+          "result": "ALREADY_DELIVERED_OR_ABSENT"
+        }
+      }
+    ],
+    "rule": "DISABLED",
+    "readingKeys": [
+      "READING#2026-11-15T10:22:11.000000Z",
+      "READING#2026-11-15T10:22:12.000000Z"
+    ],
+    "profileSeverity": "CRITICAL",
+    "pendingAlerts": 0,
+    "eventbridgeAccepted": [
+      {
+        "eventId": "bc29d7fa-a755-3da7-c115-ab0393dd9f41",
+        "requestId": "9625bd41-5344-4b66-868f-5c2a28a5ac55",
+        "logStream": "2026/11/15/af-dev-health-evaluator[$LATEST]20f52d2109054f3d9d017c8ccf63ee2a"
+      }
+    ],
+    "googleJwtTested": false,
+    "cloudwatchEvidenceMethod": "GetLogEvents; FilterLogEvents search index returned no matches during the first minute."
+  },
+  "incident": {
+    "authEvidence": "Local API handler with synthetic claims and IAM AWS access. Google JWT and HTTP API untested.",
+    "checkedAt": "2026-11-15T10:25:08Z",
+    "executions": {
+      "child": {
+        "arn": "arn:aws:states:us-east-1:975050277936:execution:af-dev-incident:c03507c9604a0876687c15e96ac4d038cf24be28d065b5aeba29ec22ada6b4b0"
+      },
+      "entry": {
+        "arn": "arn:aws:states:us-east-1:975050277936:execution:af-dev-incident-entry:af-ensayo-3816-1c6a9247-a00-entry",
+        "attemptedAt": "2026-11-15T10:24:39Z",
+        "inputSha256": "26ecd930d1f91bb00e4b6cd25a318bd551acf96786ffeb06e90c45453557c6fa",
+        "requestId": "55383afe-b737-4542-99c0-6f5f41da26d6"
+      },
+      "replay": {
+        "arn": "arn:aws:states:us-east-1:975050277936:execution:af-dev-incident:af-ensayo-3816-1c6a9247-a00-replay",
+        "attemptedAt": "2026-11-15T10:25:05Z",
+        "inputSha256": "dabba2b184e8b2ed0bf6014915f4b373ac379225f7984c4a22b214bded296949",
+        "requestId": "42c87ba1-e338-44a7-aea5-3b2fd1cc5979"
+      }
+    },
+    "incident": {
+      "assignedTech": "T-E3816",
+      "incidentId": "INC-a8c8",
+      "partsUsed": [
+        {
+          "partId": "BRG-SPH-22",
+          "qty": 1,
+          "warehouse": "WH-E3816"
+        }
+      ],
+      "state": "RESOLVED",
+      "timeline": [
+        {
+          "at": "2026-11-15T10:24:31Z",
+          "event": "DETECTED"
+        },
+        {
+          "at": "2026-11-15T10:24:49Z",
+          "event": "ASSIGNED",
+          "tech": "T-E3816"
+        },
+        {
+          "at": "2026-11-15T10:24:58Z",
+          "event": "ARRIVED",
+          "tech": "T-E3816"
+        },
+        {
+          "at": "2026-11-15T10:25:02Z",
+          "event": "RESOLVED",
+          "tech": "T-E3816"
+        }
+      ]
+    },
+    "machine": "ENS-3816",
+    "maintenanceKeys": [
+      "MAINT#2026-11-15#MNT-INC-a8c8"
+    ],
+    "operation": "ENSAYO-3816",
+    "receipts": [
+      {
+        "SK": "ACK#INC-a8c8#ARRIVAL#9d7adb04eb139c9b",
+        "acceptedAt": "2026-11-15T10:25:01Z",
+        "ackId": "09642a330ddb0ae6afdd",
+        "action": "ARRIVED",
+        "at": "2026-11-15T10:24:58Z",
+        "status": "ACCEPTED"
+      },
+      {
+        "SK": "ACK#INC-a8c8#RESOLUTION#c269e76240649b41",
+        "acceptedAt": "2026-11-15T10:25:04Z",
+        "ackId": "797d2a1ebc3bc3c849db",
+        "action": "RESOLVED",
+        "at": "2026-11-15T10:25:02Z",
+        "status": "ACCEPTED"
+      }
+    ],
+    "replayStates": [
+      "ValidateEvent",
+      "IsDuplicate",
+      "DuplicateIgnored"
+    ],
+    "stock": {
+      "PK": "PART#BRG-SPH-22",
+      "SK": "STOCK#WH-E3816",
+      "available": 0,
+      "qty": 0,
+      "reserved": 0
+    },
+    "executionStatuses": {
+      "child": {
+        "status": "SUCCEEDED",
+        "start": "2026-11-15T05:24:41.855000-05:00",
+        "stop": "2026-11-15T05:25:05.597000-05:00"
+      },
+      "entry": {
+        "status": "SUCCEEDED",
+        "start": "2026-11-15T05:24:41.701000-05:00",
+        "stop": "2026-11-15T05:24:41.917000-05:00"
+      },
+      "replay": {
+        "status": "SUCCEEDED",
+        "start": "2026-11-15T05:25:07.728000-05:00",
+        "stop": "2026-11-15T05:25:07.958000-05:00"
+      }
+    },
+    "callbacks": {
+      "ARRIVED": {
+        "requestIds": [
+          "a7858f82-0941-422b-95d8-8d21259b6ba1"
+        ],
+        "httpStatus": 200
+      },
+      "RESOLVED": {
+        "requestIds": [
+          "024c43a0-8d63-41d7-a781-47bbfd74f6e8"
+        ],
+        "httpStatus": 200
+      }
+    }
+  },
+  "compatibility": {
+    "machine": "MGIIW-1102",
+    "operation": "AF-MIGRATION-BE8A7EF7A23541A7B1F3AA164BB34F0E",
+    "records": 4,
+    "selectedFuelBatchId": "NEW",
+    "lambdaRequestId": "f9ca42c4-8da5-4e41-8c00-d4058632b806",
+    "seedRequestId": "FCPESJK473M08RVJIB1CGDNSC3VV4KQNSO5AEMVJF66Q9ASUAAJG",
+    "deployedPackageSha256": "4f7d0c7113c744cc102acb912f70c65fd38e3326779041f3a6320f69941bd78d"
+  },
+  "codeCommits": [
+    "d914fe2257ca2a6150892b6518fbb48835c449a1",
+    "e1e3828aae579841206027fe2b38fae691cf95fd"
+  ],
+  "nextPlans": [
+    {
+      "apiResourcesIncluded": true,
+      "lambdaZipSha256": "ca75d68a9055488cbe12dd6cc805685187e912cde354714027748448bdd53b62",
+      "endpointClosed": true,
+      "routes": [
+        "GET /machines/{id}/incidents/{incId}",
+        "POST /machines/{id}/incidents/{incId}/ack"
+      ],
+      "add": 11,
+      "change": 0,
+      "destroy": 0,
+      "noOp": 27,
+      "creates": [
+        "aws_apigatewayv2_api.ack[0]",
+        "aws_apigatewayv2_authorizer.ack_google[0]",
+        "aws_apigatewayv2_integration.ack[0]",
+        "aws_apigatewayv2_route.ack[\"GET\"]",
+        "aws_apigatewayv2_route.ack[\"POST\"]",
+        "aws_apigatewayv2_stage.ack[0]",
+        "aws_cloudwatch_log_group.ack[0]",
+        "aws_cloudwatch_log_group.ack_gateway[0]",
+        "aws_lambda_function.ack[0]",
+        "aws_lambda_permission.ack_gateway[\"GET\"]",
+        "aws_lambda_permission.ack_gateway[\"POST\"]"
+      ],
+      "updates": {},
+      "refreshFields": {},
+      "file": "api-incidente.tfplan",
+      "sha256": "b8b8161851afd34272c1298d11d170b022862d18d825f8d241581075a3b7efc1"
+    },
+    {
+      "apiResourcesIncluded": true,
+      "lambdaZipSha256": "ca75d68a9055488cbe12dd6cc805685187e912cde354714027748448bdd53b62",
+      "endpointClosed": true,
+      "routes": [
+        "GET /machines/{id}",
+        "GET /machines/{id}/incidents",
+        "GET /machines/{id}/incidents/{incId}",
+        "GET /machines/{id}/maintenance",
+        "GET /machines/{id}/readings",
+        "GET /operations/{op}/incidents",
+        "GET /operations/{op}/kpis",
+        "GET /operations/{op}/machines",
+        "GET /operations/{op}/technicians",
+        "GET /parts",
+        "GET /parts/{partId}/stock",
+        "POST /machines/{id}/incidents/{incId}/ack"
+      ],
+      "add": 31,
+      "change": 0,
+      "destroy": 0,
+      "noOp": 27,
+      "creates": [
+        "aws_apigatewayv2_api.ack[0]",
+        "aws_apigatewayv2_authorizer.ack_google[0]",
+        "aws_apigatewayv2_integration.ack[0]",
+        "aws_apigatewayv2_route.ack[\"GET\"]",
+        "aws_apigatewayv2_route.ack[\"POST\"]",
+        "aws_apigatewayv2_route.ack[\"incidents\"]",
+        "aws_apigatewayv2_route.ack[\"kpis\"]",
+        "aws_apigatewayv2_route.ack[\"machine\"]",
+        "aws_apigatewayv2_route.ack[\"machineIncidents\"]",
+        "aws_apigatewayv2_route.ack[\"machines\"]",
+        "aws_apigatewayv2_route.ack[\"maintenance\"]",
+        "aws_apigatewayv2_route.ack[\"partStock\"]",
+        "aws_apigatewayv2_route.ack[\"parts\"]",
+        "aws_apigatewayv2_route.ack[\"readings\"]",
+        "aws_apigatewayv2_route.ack[\"technicians\"]",
+        "aws_apigatewayv2_stage.ack[0]",
+        "aws_cloudwatch_log_group.ack[0]",
+        "aws_cloudwatch_log_group.ack_gateway[0]",
+        "aws_lambda_function.ack[0]",
+        "aws_lambda_permission.ack_gateway[\"GET\"]",
+        "aws_lambda_permission.ack_gateway[\"POST\"]",
+        "aws_lambda_permission.ack_gateway[\"incidents\"]",
+        "aws_lambda_permission.ack_gateway[\"kpis\"]",
+        "aws_lambda_permission.ack_gateway[\"machine\"]",
+        "aws_lambda_permission.ack_gateway[\"machineIncidents\"]",
+        "aws_lambda_permission.ack_gateway[\"machines\"]",
+        "aws_lambda_permission.ack_gateway[\"maintenance\"]",
+        "aws_lambda_permission.ack_gateway[\"partStock\"]",
+        "aws_lambda_permission.ack_gateway[\"parts\"]",
+        "aws_lambda_permission.ack_gateway[\"readings\"]",
+        "aws_lambda_permission.ack_gateway[\"technicians\"]"
+      ],
+      "updates": {},
+      "refreshFields": {},
+      "file": "api-dashboard.tfplan",
+      "sha256": "0554725fbe17ae2cad915bfac3f0c7f93f331929e24a6b72e6acd96c2cdf9e57"
+    },
+    {
+      "add": 2,
+      "change": 0,
+      "destroy": 0,
+      "noOp": 27,
+      "creates": [
+        "aws_amplify_app.web[0]",
+        "aws_amplify_branch.demo[0]"
+      ],
+      "updates": {},
+      "rule": "DISABLED",
+      "file": "hosting-manual.tfplan",
+      "sha256": "4760f724a554ba84c760320449651fcd954334e66de60f6100f85262e5c79575"
+    },
+    {
+      "add": 4,
+      "change": 0,
+      "destroy": 0,
+      "noOp": 27,
+      "creates": [
+        "aws_lambda_event_source_mapping.anomaly_outbox[0]",
+        "module.maintenance_trial[0].aws_cloudwatch_log_group.trial",
+        "module.maintenance_trial[0].aws_lambda_function.trial",
+        "module.maintenance_trial[0].aws_sfn_state_machine.preventive"
+      ],
+      "updates": {},
+      "rule": "DISABLED",
+      "file": "mantenimiento-outbox.tfplan",
+      "sha256": "7531312f7a778a2839a73be3e8654b32da7a7b69c78632a564e64e0325af6e37"
+    }
+  ],
+  "ci": {
+    "codeCommit": "e1e3828aae579841206027fe2b38fae691cf95fd",
+    "pythonAndFrontend": "https://github.com/alxgr-08/arquifusion/actions/runs/43704586778",
+    "terraformLinux": "https://github.com/alxgr-08/arquifusion/actions/runs/43704586774",
+    "result": "success",
+    "python": 311,
+    "adapters": 51,
+    "frontend": 20,
+    "terraformScenarios": 34
+  }
+}

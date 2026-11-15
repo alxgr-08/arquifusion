@@ -25,3 +25,5 @@ El frontend usa `mock` por defecto. Para el ensayo autorizado utiliza `live`, el
 Leonardo conserva el backend Terraform exclusivo y el estado separado del bootstrap. Los usuarios trabajan con su propia sesión autorizada. Nunca intercambiar credenciales. Para iniciar una etapa preparar los ZIP y revisar `terraform fmt`, `validate` y el plan con backend identificado. [Instrucciones de AWS](../infra/aws/README.md) · [GCP](../infra/gcp/README.md)
 
 La autoría se encuentra en [CODEOWNERS](../.github/CODEOWNERS). Los cambios de contrato requieren acuerdo entre los tres roles. Usar PR para integrar las contribuciones y revisar la CI antes de una demostración.
+
+El PR #50 publica la IaC de Leonardo y las correcciones de los tres roles. El relevo registra qué se probó realmente en Academy y cuáles planes de altas siguen pendientes. [Despliegue y próximos pasos](revision-nocturna-2026-11-15.md)

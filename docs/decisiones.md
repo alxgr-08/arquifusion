@@ -66,3 +66,7 @@ La telemetría completa sale del simulador `direct` hacia Firehose. El ensayo te
 ## Actualización local del 15 de noviembre
 
 El flujo usa almacenes por operación, procedencia de lecturas y mantenimiento, ETag fuerte y una transacción DynamoDB que delega la serialización al SDK. El evaluador conserva una fila de outbox por alerta y puede reconciliar una máquina silenciosa. La SPA se prepara para Amplify y Firebase queda como alternativa. El retorno de la demo selecciona una sola máquina, operación y fecha por identidad federada. El inventario de 27 recursos observados precede a estas mejoras. [Arquitectura y clasificación](arquitectura.md) Para un ensayo único, el puente admite también las dos sesiones autorizadas de un operador, con verificación del Parquet y el mensaje antes de escribir. [Procedimiento manual](../infra/gcp/README.md)
+
+## Despliegue y ensayo v1.2 del 15/11
+
+Se autorizaron y aplicaron cinco paquetes y el ASL (0/6/0), más una actualización de incident-tasks para compatibilidad de claves (0/1/0). El plan final quedó 0/0/0 con 27 recursos. INC-a8c8 cerró con dos recibos, una pieza y un mantenimiento. La regla sigue DISABLED. La prueba de callbacks usó el handler local y acceso IAM. La API con JWT, hosting y puente real conservan su despliegue y ensayo pendientes. [Evidencia y reparto del trabajo](revision-nocturna-2026-11-15.md)

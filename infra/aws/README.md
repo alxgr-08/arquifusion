@@ -105,3 +105,7 @@ La tabla es `af-dev-arquifusion`, el bus es `af-dev-bus` y el tópico de desarro
 La API está ausente por defecto. El perfil cerrado de incidente contiene 2 rutas, y el conjunto de dashboard añade 10 GET autenticados. La apertura requiere otra opción explícita y un origen autorizado. La tabla es regional y los 27 recursos del estado de aplicación se conservan. La outbox añade datos al procesar futuras alertas y cuenta con mapping optativo inicialmente deshabilitado. El retorno de BigQuery se limita a una operación, máquina y fecha de ensayo. [API](api/README.md) · [Outbox](../../services/health_evaluator/README.md) · [Hosting](../hosting/README.md) · [Retorno](../../services/bigquery_sync_back/README.md)
 
 El alojamiento manual optativo agrega una aplicación Amplify y su rama de demo. La generación del ZIP funciona sin subir archivos. El origen HTTPS que devuelva el servicio sirve para el registro en Google y CORS. [Hosting](../hosting/README.md) · [Planes de este corte](../../docs/informe-final-2026-11-15.md)
+
+## Corte posterior al ensayo v1.2
+
+El PR #50 publica esta infraestructura. La actualización de los cinco paquetes y ASL y el ajuste de lectura histórica de incident-tasks ya se aplicaron. El último plan quedó sin cambios sobre los 27 recursos. El caso ENSAYO-3816 completó ambos callbacks y el consumo de una pieza. Los nuevos planes del directorio local `build/night-20261115/` mantienen 27 no-op. [Hashes, alcance y pendientes](../../docs/revision-nocturna-2026-11-15.md) · [Evidencia saneada](../../docs/evidencias/2026-11-15-academy.json)
