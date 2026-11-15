@@ -37,9 +37,11 @@ SELECT
   p.machine_id,
   p.model,
   p.CENTROID_ID AS cluster_id,
+  -- The machine's own KPIs win over its centroid: with few machines one outlier can share a cluster with the
+  -- balanced ones (e.g. a single overloaded truck).
   CASE
-    WHEN pr.c_util < 40 THEN 'LOW_UTILIZATION_HIGH_COST'
-    WHEN pr.c_overuse >= 1 OR pr.c_util >= 85 THEN 'OVERWORKED'
+    WHEN p.avg_utilization_pct < 40 OR pr.c_util < 40 THEN 'LOW_UTILIZATION_HIGH_COST'
+    WHEN p.avg_overuse_hours >= 1 OR p.avg_utilization_pct >= 85 OR pr.c_overuse >= 1 OR pr.c_util >= 85 THEN 'OVERWORKED'
     ELSE 'BALANCED'
   END AS cluster_label,
   ROUND(p.avg_utilization_pct, 1) AS avg_utilization_pct,

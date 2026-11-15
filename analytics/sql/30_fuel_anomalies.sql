@@ -1,6 +1,6 @@
 -- Fuel consumption out of the expected range (P6).
 -- 1) ARIMA_PLUS per machine on daily liters/ton + ML.DETECT_ANOMALIES -> sudden deviations.
--- 2) Linear trend of liters/ton relative to the model -> progressive increase (wear).
+-- 2) Steady rise of the machine's own liters/ton over 60 days -> progressive increase (wear).
 -- Requires 10_daily_kpis.sql.
 
 CREATE OR REPLACE MODEL af_ml.fuel_lpt_arima
@@ -36,22 +36,36 @@ FROM af_out.daily_kpis AS k
 LEFT JOIN af_out.fuel_anomalies AS a
   ON k.machine_id = a.machine_id AND k.date = a.date;
 
--- Progressive increase: slope of (machine L/t / model L/t) over the last 30 days, in % per week.
+-- Progressive increase (wear): steady rise of the machine's own liters/ton over the last 60 days, in % per week.
+-- A sudden jump has a weak correlation with time, so it is left to ML.DETECT_ANOMALIES above.
+-- The model average is not used for the slope because it includes the machine itself and dampens the trend.
 CREATE OR REPLACE TABLE af_out.fuel_trends AS
-WITH ratio AS (
+WITH daily AS (
   SELECT
     machine_id,
     model,
-    DATE_DIFF(date, DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY), DAY) AS day_index,
-    SAFE_DIVIDE(fuel_liters_per_ton, fuel_liters_per_ton_model) AS ratio
+    date,
+    DATE_DIFF(date, DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY), DAY) AS day_index,
+    fuel_liters_per_ton,
+    SAFE_DIVIDE(fuel_liters_per_ton, fuel_liters_per_ton_model) AS lpt_ratio
   FROM af_out.daily_kpis
-  WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND fuel_liters_per_ton IS NOT NULL
+  WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY) AND fuel_liters_per_ton IS NOT NULL
+),
+trend AS (
+  SELECT
+    machine_id,
+    model,
+    AVG(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY), lpt_ratio, NULL)) AS ratio_last_14d,
+    100 * 7 * SAFE_DIVIDE(COVAR_SAMP(day_index, fuel_liters_per_ton), VAR_SAMP(day_index))
+      / AVG(fuel_liters_per_ton) AS pct_per_week,
+    CORR(day_index, fuel_liters_per_ton) AS steadiness
+  FROM daily
+  GROUP BY machine_id, model
 )
 SELECT
   machine_id,
   model,
-  ROUND(AVG(ratio), 3) AS avg_ratio_vs_model,
-  ROUND(100 * 7 * SAFE_DIVIDE(COVAR_SAMP(day_index, ratio), VAR_SAMP(day_index)), 2) AS trend_pct_per_week,
-  100 * 7 * SAFE_DIVIDE(COVAR_SAMP(day_index, ratio), VAR_SAMP(day_index)) > 1.5 AS progressive_increase
-FROM ratio
-GROUP BY machine_id, model;
+  ROUND(ratio_last_14d, 3) AS avg_ratio_vs_model,
+  ROUND(pct_per_week, 2) AS trend_pct_per_week,
+  IFNULL(pct_per_week > 1.5 AND steadiness >= 0.6, FALSE) AS progressive_increase
+FROM trend;

@@ -66,8 +66,13 @@ SELECT
   ROUND(fuel_liters_per_ton, 3) AS fuel_liters_per_ton,
   ROUND(AVG(fuel_liters_per_ton) OVER (PARTITION BY model, date), 3) AS fuel_liters_per_ton_model,
   ROUND(cost_per_hour, 1) AS cost_per_hour,
+  -- Compared with the other machines of the same model that day (the machine itself excluded: with 2 machines
+  -- per model, including it hides a +28 % jump).
   IFNULL(
-    fuel_liters_per_ton > fuel_ratio_alert * AVG(fuel_liters_per_ton) OVER (PARTITION BY model, date),
+    fuel_liters_per_ton > fuel_ratio_alert * SAFE_DIVIDE(
+      SUM(fuel_liters_per_ton) OVER (PARTITION BY model, date) - fuel_liters_per_ton,
+      COUNT(fuel_liters_per_ton) OVER (PARTITION BY model, date) - 1
+    ),
     FALSE
   ) AS fuel_anomaly
 FROM kpis;

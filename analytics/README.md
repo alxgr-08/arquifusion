@@ -36,5 +36,9 @@ The BigQuery sandbox (no billing account) supports all of the above, including B
 python -m pytest -q analytics/tests   # the generator plants every pattern the SQL must find
 ```
 
-The SQL has not been executed yet (no GCP project at the time of writing): run `run_pipeline.sh` once the
-project exists and fix any dialect issue there.
+Executed end to end in the BigQuery sandbox (project `arquifusion`, 2026-11-15). With the synthetic history it finds:
+EXC-0051 progressive fuel increase (+2.7 %/week), LDR-0011 fuel anomaly (8 of its last 10 days), TRK-0104 and DRL-0003
+as low utilization + high cost, TRK-0101 as overworked, a 4-week forecast for the 5 parts and the failure precursors.
+
+On Windows, run the scripts from Git Bash; if `bq` says `python3.x: command not found`, set
+`CLOUDSDK_PYTHON` to the Python bundled with the Cloud SDK (`.../google-cloud-sdk/platform/bundledpython/python.exe`).
