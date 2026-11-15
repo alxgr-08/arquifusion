@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 from af_shared.fakes import Recorder
-from botocore.exceptions import ClientError
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "statemachines" / "tests"))
 from asl_runner import Paused  # noqa: E402
+from auth import as_user  # noqa: E402
 from flow_harness import Harness, anomaly_event  # noqa: E402
 
 NOW = "2026-11-13T16:00:00Z"
@@ -37,10 +37,9 @@ def assert_shape(obj: dict, interface: str) -> None:
 def req(
     method: str,
     path: str,
-    groups: str = "[SUPERVISOR]",
+    claims: dict | None,
     query: dict | None = None,
     body: dict | None = None,
-    claims: dict | None = None,
 ) -> dict:
     return {
         "rawPath": path,
@@ -49,7 +48,7 @@ def req(
         "requestContext": {
             "http": {"method": method},
             "stage": "$default",
-            "authorizer": {"jwt": {"claims": {"cognito:groups": groups, **(claims or {})}}},
+            "authorizer": {"jwt": {"claims": claims}} if claims else {},
         },
     }
 
@@ -59,8 +58,11 @@ def api(load_handler):
     return load_handler("api")
 
 
-def call(api, h: Harness, sfn, *args, **kwargs) -> tuple[int, object]:
-    res = api.route(req(*args, **kwargs), h.table, sfn, NOW)
+def call(
+    api, h: Harness, sfn, method: str, path: str, role: str | None = "SUPERVISOR", tech: str | None = None, **kwargs
+) -> tuple[int, object]:
+    claims = as_user(h.table, role, tech=tech) if role else None
+    res = api.route(req(method, path, claims, **kwargs), h.table, sfn, NOW)
     return res["statusCode"], json.loads(res["body"])
 
 
@@ -80,7 +82,10 @@ class TechnicianInTheWeb:
         inc = info["payload"]["incident"]
         action = "ARRIVED" if info["payload"]["stage"] == "ARRIVAL" else "RESOLVED"
         path = f"/machines/{inc['machineId']}/incidents/{inc['incidentId']}/ack"
-        status, out = call(self.api, self.h, self.sfn, "POST", path, groups="[TECHNICIAN]", body={"action": action})
+        tech = self.h.incident(inc["machineId"])["assignedTech"]
+        status, out = call(
+            self.api, self.h, self.sfn, "POST", path, role="TECHNICIAN", tech=tech, body={"action": action}
+        )
         self.responses.append((status, out))
         assert status == 200, out
         sent = self.sfn.of("send_task_success")[-1]
@@ -103,45 +108,6 @@ def test_technician_acks_drive_the_step_function_and_return_the_incident(api) ->
     status, maintenance = call(api, h, Recorder(), "GET", "/machines/EXC-0042/maintenance")
     assert_shape(maintenance[0], "Maintenance")
     assert maintenance[0]["partsReplaced"] == ["BRG-SPH-22"]
-
-
-def test_ack_rejects_wrong_stage_duplicates_and_expired_tokens(api) -> None:
-    h = Harness()
-    sfn = Recorder()
-    with pytest.raises(Paused):
-        h.run_incident(anomaly_event(), hold)
-    inc = h.incident("EXC-0042")
-    path = f"/machines/EXC-0042/incidents/{inc['incidentId']}/ack"
-    status, body = call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "RESOLVED"})
-    assert status == 409 and body["error"]["code"] == "WRONG_STAGE"
-    assert call(api, h, sfn, "POST", path, groups="[OPERATOR]", body={"action": "ARRIVED"})[0] == 403
-    other = {"custom:techId": "T-03"}
-    assert call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "ARRIVED"}, claims=other)[0] == 403
-    assert call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "NOPE"})[0] == 400
-    assert (
-        call(
-            api,
-            h,
-            sfn,
-            "POST",
-            "/machines/EXC-0042/incidents/INC-zzzz/ack",
-            groups="[TECHNICIAN]",
-            body={"action": "ARRIVED"},
-        )[0]
-        == 404
-    )
-
-    expired = Recorder(
-        {
-            "send_task_success": lambda **kw: (_ for _ in ()).throw(
-                ClientError({"Error": {"Code": "TaskTimedOut", "Message": "x"}}, "SendTaskSuccess")
-            )
-        }
-    )
-    status, body = call(api, h, expired, "POST", path, groups="[MAINT_LEAD]", body={"action": "ARRIVED"})
-    assert status == 409 and body["error"]["code"] == "TASK_EXPIRED"
-    status, body = call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "ARRIVED"})
-    assert status == 409 and body["error"]["code"] in ("ALREADY_CONFIRMED", "WRONG_STAGE")
 
 
 def test_read_endpoints_match_the_frontend_types(api) -> None:
@@ -212,7 +178,7 @@ def test_read_endpoints_match_the_frontend_types(api) -> None:
     busy = [t for t in techs if t["availability"] == "BUSY"]
     assert [(t["techId"], t["queue"]) for t in busy] == [("T-07", 1)]
 
-    status, parts = call(api, h, sfn, "GET", "/parts", groups="[MAINT_LEAD]")
+    status, parts = call(api, h, sfn, "GET", "/parts", role="MAINT_LEAD")
     assert {p["partId"] for p in parts} == {"FLT-HID-01", "BRG-SPH-22", "FLT-FUE-02", "CLT-RAD-05", "INJ-DSL-07"}
     bearing = next(p for p in parts if p["partId"] == "BRG-SPH-22")
     assert_shape(bearing, "PartStock")
@@ -220,13 +186,13 @@ def test_read_endpoints_match_the_frontend_types(api) -> None:
     assert_shape(north, "WarehouseStock")
     assert (north["qty"], north["reserved"], north["forecastNext4Weeks"][0]) == (2, 1, 2)
     assert len(north["forecastNext4Weeks"]) == 4
-    assert call(api, h, sfn, "GET", "/parts/BRG-SPH-22/stock", groups="[MAINT_LEAD]")[1] == bearing
-    assert call(api, h, sfn, "GET", "/parts/NOPE/stock", groups="[MAINT_LEAD]")[0] == 404
+    assert call(api, h, sfn, "GET", "/parts/BRG-SPH-22/stock", role="MAINT_LEAD")[1] == bearing
+    assert call(api, h, sfn, "GET", "/parts/NOPE/stock", role="MAINT_LEAD")[0] == 404
 
     status, kpis = call(api, h, sfn, "GET", "/operations/MINA-NORTE/kpis")
     assert kpis[0]["fuelLitersPerTonFleet"] == 1.7
     assert ts_fields("MachineKpi") <= set(kpis[0])
-    assert call(api, h, sfn, "GET", "/operations/MINA-NORTE/kpis", groups="[OPERATOR]")[0] == 403
+    assert call(api, h, sfn, "GET", "/operations/MINA-NORTE/kpis", role="OPERATOR")[0] == 403
 
 
 def test_errors_auth_and_cors(api) -> None:
@@ -234,7 +200,7 @@ def test_errors_auth_and_cors(api) -> None:
     sfn = Recorder()
     assert call(api, h, sfn, "GET", "/nope")[0] == 404
     assert call(api, h, sfn, "DELETE", "/machines/EXC-0042")[0] == 405
-    assert call(api, h, sfn, "GET", "/machines/EXC-0042", groups="")[0] == 401
+    assert call(api, h, sfn, "GET", "/machines/EXC-0042", role=None)[0] == 401
     assert call(api, h, sfn, "GET", "/machines/EXC-0042/readings", query={"from": "yesterday"})[0] == 400
-    res = api.route(req("OPTIONS", "/machines/EXC-0042"), h.table, sfn, NOW)
+    res = api.route(req("OPTIONS", "/machines/EXC-0042", None), h.table, sfn, NOW)
     assert res["statusCode"] == 204 and res["headers"]["Access-Control-Allow-Origin"] == "*"

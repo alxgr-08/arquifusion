@@ -10,8 +10,8 @@
     "authorizer": {
       "jwt": {
         "claims": {
-          "sub": "ensayo-operador",
-          "cognito:groups": "[MAINT_LEAD]"
+          "iss": "https://accounts.google.com",
+          "sub": "ensayo-operador"
         }
       }
     }

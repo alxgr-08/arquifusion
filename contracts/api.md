@@ -1,6 +1,9 @@
-# API REST (backend -> frontend) · v1.0
+# API REST (backend -> frontend) · v1.1
 
-Base: API Gateway (HTTP API). Auth: Cognito JWT (`Authorization: Bearer <token>`); the Cognito group defines what each user sees.
+Base: API Gateway (HTTP API). Auth (v1.1, #42): Google ID token (`Authorization: Bearer <token>`), verified by the
+API Gateway JWT authorizer (issuer `https://accounts.google.com`, audience = OAuth Client ID). The role is not in the
+token: it comes from the user's grant in DynamoDB (`GRANT#{iss}#{sub}` / `OP#{operationId}`, see `af_shared/grants.py`),
+one row per operation. The `Groups` column below is that role.
 JSON responses, camelCase fields. Errors: `{ "error": { "code": "...", "message": "..." } }`.
 **Response shapes: `frontend/src/api/types.ts`** (the API tests check every field against that file).
 
@@ -20,7 +23,7 @@ JSON responses, camelCase fields. Errors: `{ "error": { "code": "...", "message"
 | POST | `/simulator/faults` | `{faultId, affectedMachines, ...}` (Lambda `af-dev-fault-injector`) | Demo | MAINT_LEAD, SUPERVISOR, MANAGER |
 
 `all` = OPERATOR, TECHNICIAN, MAINT_LEAD, SUPERVISOR, MANAGER. `staff` = all except OPERATOR.
-No token/groups -> 401; wrong group -> 403.
+No token -> 401. No grant -> 403 `NO_GRANT`; other operation -> 403 `OTHER_OPERATION`; wrong role -> 403 `FORBIDDEN`.
 
 ## Bodies
 
@@ -31,6 +34,10 @@ No token/groups -> 401; wrong group -> 403.
 ```
 `partsUsed` and `notes` are optional (default: everything reserved was used). 409 `WRONG_STAGE` if the incident is not
 waiting for that action, 409 `TASK_EXPIRED` if the wait timed out and the incident was reassigned.
+Who: MAINT_LEAD of the incident's operation, or the TECHNICIAN whose grant `techId` is the assigned technician
+(403 `NOT_ASSIGNED` / `NO_TECH_ID`). Grant, version and assignment are re-checked in the same transaction that stores
+the confirmation (403 `GRANT_CHANGED`). Safe to repeat: a repeated click returns 200 without a second callback, and
+503 `CALLBACK_PENDING` means "repeat the same action" (the confirmation is kept and delivered once).
 
 `POST /simulator/faults`
 ```json

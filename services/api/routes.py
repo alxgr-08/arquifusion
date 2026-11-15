@@ -1,7 +1,8 @@
 """REST API for the web. Response shapes = frontend/src/api/types.ts (Rol 3); routes = contracts/api.md. Owner: Rol 2.
 
-One Lambda behind API Gateway (HTTP API, JWT authorizer with Cognito). Routes are matched on method + path, so it
-works with explicit routes or a single `ANY /{proxy+}` route. The Cognito group decides what each user can call.
+One Lambda behind API Gateway (HTTP API, JWT authorizer for Google). Routes are matched on method + path, so it
+works with explicit routes or a single `ANY /{proxy+}` route. The caller's grant (af_shared.grants: role per
+operation, kept in DynamoDB) decides what each user can call and in which operation.
 Lists are plain JSON arrays (the web expects `Machine[]`, `Incident[]`, ...). Storage keys and task tokens are never
 returned.
 """
@@ -15,9 +16,16 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from af_shared import keys
-from af_shared.ddb import from_ddb, is_conditional_failure, iso, parse_iso
-from af_shared.http import ApiError, groups
+from af_shared import grants, keys
+from af_shared.ddb import (
+    from_ddb,
+    is_conditional_failure,
+    is_transaction_conditional_failure,
+    iso,
+    parse_iso,
+    transact_write,
+)
+from af_shared.http import ApiError
 from boto3.dynamodb.conditions import Attr, Key
 
 ALL = {"OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER"}
@@ -31,8 +39,7 @@ class Ctx:
     def __init__(self, table: Any, sfn: Any, now: str, event: dict[str, Any], params: dict[str, str]) -> None:
         self.table, self.sfn, self.now, self.event, self.params = table, sfn, now, event, params
         self.query = event.get("queryStringParameters") or {}
-        self.groups = groups(event)
-        self.claims = (event.get("requestContext", {}).get("authorizer", {}).get("jwt") or {}).get("claims") or {}
+        self.principal: grants.Principal | None = None  # None only with AF_AUTH_DISABLED (local tests)
 
     def body(self) -> dict[str, Any]:
         from af_shared.http import json_body
@@ -304,11 +311,123 @@ def kpis(ctx: Ctx) -> list[dict[str, Any]]:
     return [kpi_out(r) for r in _query_all(ctx.table, IndexName="GSI1", KeyConditionExpression=cond)]
 
 
+ACK_STAGES = {"ARRIVED": "ARRIVAL", "RESOLVED": "RESOLUTION"}
+EXPIRED_CODES = {"TaskTimedOut", "InvalidToken", "TaskDoesNotExist"}
+
+
+def _find_incident(ctx: Ctx, machine_id: str, incident_id: str) -> dict[str, Any]:
+    rows = _query_all(
+        ctx.table,
+        KeyConditionExpression=Key("PK").eq(keys.machine_pk(machine_id)) & Key("SK").begins_with("INCIDENT#"),
+        FilterExpression=Attr("incidentId").eq(incident_id),
+    )
+    if not rows:
+        raise ApiError(404, "INCIDENT_NOT_FOUND", f"Incident {incident_id} not found for {machine_id}")
+    return rows[0]
+
+
+def _reload(ctx: Ctx, incident: dict[str, Any]) -> dict[str, Any]:
+    item = ctx.table.get_item(Key={"PK": incident["PK"], "SK": incident["SK"]}, ConsistentRead=True).get("Item")
+    return from_ddb(item or incident)
+
+
+def operation_of(ctx: Ctx) -> str | None:
+    """Operation a request touches: the {op} in the path or the machine's operation (None = not scoped)."""
+    if "op" in ctx.params:
+        return ctx.params["op"]
+    if "id" in ctx.params:
+        row = ctx.table.get_item(Key=keys.machine_profile(ctx.params["id"])).get("Item")
+        if row:
+            return str(row.get("operationId"))
+    return None
+
+
+def _authorize_ack(ctx: Ctx, incident: dict[str, Any]) -> tuple[str, grants.Grant | None]:
+    """Grant in the incident's operation; technicians only for incidents assigned to them. Returns (who, grant)."""
+    if ctx.principal is None:  # AF_AUTH_DISABLED
+        return incident.get("assignedTech") or "LOCAL", None
+    grant = ctx.principal.grant_for(str(incident.get("operationId")))
+    if grant is None:
+        raise ApiError(403, "OTHER_OPERATION", "No access to the incident's operation")
+    if grant.role == "MAINT_LEAD":
+        return grant.tech_id or "MAINT_LEAD", grant
+    if grant.role != "TECHNICIAN":
+        raise ApiError(403, "FORBIDDEN", "Only the assigned technician or the maintenance lead can confirm")
+    if not grant.tech_id:
+        raise ApiError(403, "NO_TECH_ID", "The technician grant has no techId")
+    if grant.tech_id != incident.get("assignedTech"):
+        raise ApiError(403, "NOT_ASSIGNED", "Only the assigned technician or the maintenance lead can confirm")
+    return grant.tech_id, grant
+
+
+def _is_closed(incident: dict[str, Any]) -> bool:
+    return incident.get("GSI1PK", "").endswith("#CLOSED") or bool(incident.get("closedAt"))
+
+
+def _has_event(incident: dict[str, Any], action: str) -> bool:
+    return any(e.get("event") == action for e in incident.get("timeline", []))
+
+
+def _finalize(ctx: Ctx, incident: dict[str, Any], pending: dict[str, Any]) -> dict[str, Any]:
+    """Record the confirmed step once (conditional on the pending callback) and drop the consumed token."""
+    action = pending["action"]
+    event = {"at": pending["at"], "event": action, **({"tech": pending["tech"]} if pending.get("tech") else {})}
+    key = {"PK": incident["PK"], "SK": incident["SK"]}
+    try:
+        ctx.table.update_item(
+            Key=key,
+            UpdateExpression="SET #st = :s, timeline = list_append(timeline, :ev) REMOVE pendingAck",
+            ConditionExpression="pendingAck.#tok = :tok",
+            ExpressionAttributeNames={"#st": "state", "#tok": "token"},
+            ExpressionAttributeValues={
+                ":s": "IN_PROGRESS" if action == "ARRIVED" else "RESOLVED",
+                ":tok": pending["token"],
+                ":ev": [event],
+            },
+        )
+    except Exception as exc:
+        if not is_conditional_failure(exc):  # another request already finalized it
+            raise
+    try:  # the next wait may already have stored a new token: only remove ours
+        ctx.table.update_item(
+            Key=key,
+            UpdateExpression="REMOVE taskToken, pendingStage",
+            ConditionExpression="taskToken = :tok",
+            ExpressionAttributeValues={":tok": pending["token"]},
+        )
+    except Exception as exc:
+        if not is_conditional_failure(exc):
+            raise
+    return _reload(ctx, incident)
+
+
+def _after_expired(current: dict[str, Any], pending: dict[str, Any]) -> tuple[str, str | None]:
+    """Step Functions rejected the token. Decide if an earlier attempt was delivered (response lost),
+    if the wait really expired, or if there is a newer wait for the same stage to deliver to."""
+    if pending["stage"] == "ARRIVAL":
+        if current.get("pendingStage") == "RESOLUTION" or _is_closed(current):
+            return "DELIVERED", None
+        if current.get("assignedTech") != pending.get("assignedTech"):
+            return "EXPIRED", None  # timeout -> technician released and the incident reassigned
+        return "UNKNOWN", None
+    if _is_closed(current):
+        return "DELIVERED", None
+    newer = current.get("taskToken")
+    if current.get("pendingStage") == "RESOLUTION" and newer and newer != pending["token"]:
+        return "RETRY", newer  # long-downtime timeout re-armed the wait with a new token
+    return "UNKNOWN", None
+
+
 def ack(ctx: Ctx) -> dict[str, Any]:
-    """Technician confirms ARRIVED or RESOLVED; resumes the waiting Step Function. Returns the updated Incident."""
+    """Technician confirms ARRIVED or RESOLVED and the waiting Step Function resumes. Returns the Incident.
+
+    Safe to repeat: the first request stores the callback (`pendingAck`) before calling SendTaskSuccess, so
+    - a second click after success returns 200 with the incident and does not call Step Functions again;
+    - if the call to Step Functions fails or its answer is lost, repeating the request delivers the same callback.
+    """
     body = ctx.body()
     action = str(body.get("action") or body.get("event") or "").upper()
-    stage = {"ARRIVED": "ARRIVAL", "RESOLVED": "RESOLUTION"}.get(action)
+    stage = ACK_STAGES.get(action)
     if stage is None:
         raise ApiError(400, "INVALID_ACTION", "action must be ARRIVED or RESOLVED")
     parts_used = body.get("partsUsed")
@@ -318,64 +437,106 @@ def ack(ctx: Ctx) -> dict[str, Any]:
     ):
         raise ApiError(400, "INVALID_PARTS", "partsUsed must be a list of {partId, qty>0}")
 
-    machine_id, incident_id = ctx.params["id"], ctx.params["incId"]
-    rows = _query_all(
-        ctx.table,
-        KeyConditionExpression=Key("PK").eq(keys.machine_pk(machine_id)) & Key("SK").begins_with("INCIDENT#"),
-        FilterExpression=Attr("incidentId").eq(incident_id),
-    )
-    if not rows:
-        raise ApiError(404, "INCIDENT_NOT_FOUND", f"Incident {incident_id} not found for {machine_id}")
-    incident = rows[0]
-    tech_claim = ctx.claims.get("custom:techId")
-    if "MAINT_LEAD" not in ctx.groups and tech_claim and tech_claim != incident.get("assignedTech"):
-        raise ApiError(403, "NOT_ASSIGNED", "Only the assigned technician or the maintenance lead can confirm")
-    token = incident.get("taskToken")
-    if incident.get("pendingStage") != stage or not token:
-        expected = incident.get("pendingStage") or "none"
-        raise ApiError(409, "WRONG_STAGE", f"Incident is not waiting for {action} (waiting for: {expected})")
+    incident = _find_incident(ctx, ctx.params["id"], ctx.params["incId"])
+    who, grant = _authorize_ack(ctx, incident)
+    pending = incident.get("pendingAck") or {}
 
-    output = {
-        "event": action,
-        "at": ctx.now,
-        "by": tech_claim or incident.get("assignedTech"),
-        "notes": body.get("notes"),
-    }
-    if parts_used is not None:
-        output["partsUsed"] = [{"partId": p["partId"], "qty": int(p["qty"])} for p in parts_used]
-    new_state = "IN_PROGRESS" if action == "ARRIVED" else "RESOLVED"
-    key = {"PK": incident["PK"], "SK": incident["SK"]}
-    try:  # consume the token first, so a fast next stage can store its own token safely
-        updated = ctx.table.update_item(
-            Key=key,
-            UpdateExpression="SET #st = :s, timeline = list_append(timeline, :ev) REMOVE taskToken, pendingStage",
-            ConditionExpression="taskToken = :tok",
-            ExpressionAttributeNames={"#st": "state"},
-            ExpressionAttributeValues={
-                ":s": new_state,
-                ":tok": token,
-                ":ev": [
-                    {
-                        "at": ctx.now,
-                        "event": action,
-                        **({"tech": incident["assignedTech"]} if incident.get("assignedTech") else {}),
-                    }
-                ],
-            },
-            ReturnValues="ALL_NEW",
-        )["Attributes"]
-    except Exception as exc:
-        if is_conditional_failure(exc):
-            raise ApiError(409, "ALREADY_CONFIRMED", "This step was already confirmed") from exc
-        raise
-    try:
-        ctx.sfn.send_task_success(taskToken=token, output=json.dumps(output))
-    except Exception as exc:
-        code = (getattr(exc, "response", None) or {}).get("Error", {}).get("Code", type(exc).__name__)
-        if code in ("TaskTimedOut", "InvalidToken", "TaskDoesNotExist"):
-            raise ApiError(409, "TASK_EXPIRED", "The wait expired; the incident was reassigned") from exc
-        raise
-    return incident_out(from_ddb(updated))
+    # A stale ARRIVED callback that was delivered but never finalized (its response was lost): finish it first.
+    if pending and pending.get("stage") != stage:
+        if pending.get("stage") == "ARRIVAL" and incident.get("pendingStage") == "RESOLUTION":
+            incident = _finalize(ctx, incident, pending)
+        pending = incident.get("pendingAck") or {}
+
+    if not (pending and pending.get("stage") == stage):
+        if _has_event(incident, action):
+            return incident_out(incident)  # repeated click: already confirmed
+        token = incident.get("taskToken")
+        if incident.get("pendingStage") != stage or not token:
+            waiting = incident.get("pendingStage") or "none"
+            raise ApiError(409, "WRONG_STAGE", f"Incident is not waiting for {action} (waiting for: {waiting})")
+        output = {"event": action, "at": ctx.now, "by": who, "notes": body.get("notes")}
+        if parts_used is not None:
+            output["partsUsed"] = [{"partId": p["partId"], "qty": int(p["qty"])} for p in parts_used]
+        assigned = incident.get("assignedTech")
+        pending = {
+            "stage": stage,
+            "action": action,
+            "token": token,
+            "at": ctx.now,
+            "tech": assigned,
+            "assignedTech": assigned,
+            "output": json.dumps(output),
+        }
+        cond = "taskToken = :tok AND pendingStage = :stage AND attribute_not_exists(pendingAck)"
+        values: dict[str, Any] = {":p": pending, ":tok": token, ":stage": stage}
+        if grant is not None and grant.role == "TECHNICIAN":
+            cond += " AND assignedTech = :assigned"
+            values[":assigned"] = grant.tech_id
+        store = {
+            "Update": {
+                "Key": {"PK": incident["PK"], "SK": incident["SK"]},
+                "UpdateExpression": "SET pendingAck = :p",
+                "ConditionExpression": cond,
+                "ExpressionAttributeValues": values,
+            }
+        }
+        try:  # grant (role, techId, version) and assignment re-checked in the same transaction as the receipt
+            transact_write(ctx.table, ([grants.condition_check(grant)] if grant else []) + [store])
+        except Exception as exc:
+            if not (is_transaction_conditional_failure(exc) or is_conditional_failure(exc)):
+                raise
+            reasons = (getattr(exc, "response", None) or {}).get("CancellationReasons") or []
+            if grant and reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+                raise ApiError(403, "GRANT_CHANGED", "Your access changed; reload and try again") from exc
+            current = _reload(ctx, incident)  # two clicks at the same time: continue with the one stored first
+            pending = current.get("pendingAck") or {}
+            if pending.get("stage") != stage:
+                if _has_event(current, action):
+                    return incident_out(current)
+                if grant and grant.role == "TECHNICIAN" and current.get("assignedTech") != grant.tech_id:
+                    raise ApiError(403, "NOT_ASSIGNED", "The incident was reassigned") from exc
+                raise ApiError(409, "WRONG_STAGE", f"Incident is not waiting for {action}") from exc
+            incident = current
+
+    token = pending["token"]
+    delivered = False
+    for _ in range(2):
+        try:
+            ctx.sfn.send_task_success(taskToken=token, output=pending["output"])
+            delivered = True
+            break
+        except Exception as exc:
+            code = (getattr(exc, "response", None) or {}).get("Error", {}).get("Code", type(exc).__name__)
+            if code not in EXPIRED_CODES:
+                raise ApiError(
+                    503, "CALLBACK_PENDING", "Could not reach Step Functions; repeat the same action to retry"
+                ) from exc
+            verdict, newer = _after_expired(_reload(ctx, incident), pending)
+            if verdict == "DELIVERED":
+                delivered = True
+                break
+            if verdict == "RETRY" and newer:
+                ctx.table.update_item(
+                    Key={"PK": incident["PK"], "SK": incident["SK"]},
+                    UpdateExpression="SET pendingAck.#tok = :new",
+                    ExpressionAttributeNames={"#tok": "token"},
+                    ExpressionAttributeValues={":new": newer},
+                )
+                token = pending["token"] = newer
+                continue
+            if verdict == "EXPIRED":
+                ctx.table.update_item(
+                    Key={"PK": incident["PK"], "SK": incident["SK"]},
+                    UpdateExpression="REMOVE pendingAck",
+                    ConditionExpression="pendingAck.#tok = :tok",
+                    ExpressionAttributeNames={"#tok": "token"},
+                    ExpressionAttributeValues={":tok": token},
+                )
+                raise ApiError(409, "TASK_EXPIRED", "The wait expired; the incident was reassigned") from exc
+            raise ApiError(503, "CALLBACK_PENDING", "Confirmation in progress; repeat the same action") from exc
+    if not delivered:
+        raise ApiError(503, "CALLBACK_PENDING", "Confirmation in progress; repeat the same action")
+    return incident_out(_finalize(ctx, incident, pending))
 
 
 # ------------------------------------------------------------------------------------------------- routing

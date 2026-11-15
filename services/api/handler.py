@@ -1,7 +1,8 @@
 """af-dev-api: REST endpoints of contracts/api.md (P4, P5, P7, P10). Owner: Rol 2.
 
-Trigger: API Gateway HTTP API (payload v2) with Cognito JWT authorizer. Also accepts REST API (v1) events.
-Env: AF_TABLE_NAME, AF_AUTH_DISABLED=true only for local tests without Cognito.
+Trigger: API Gateway HTTP API (payload v2) with a JWT authorizer for Google (issuer https://accounts.google.com,
+audience = OAuth Client ID). Roles come from GRANT# items in DynamoDB (af_shared.grants), not from the token.
+Env: AF_TABLE_NAME, AF_AUTH_DISABLED=true only for local tests without a token.
 POST /simulator/faults is served by af-dev-fault-injector, not here.
 """
 
@@ -11,6 +12,7 @@ import os
 from typing import Any
 
 import routes
+from af_shared import grants
 from af_shared.ddb import get_table, now_iso
 from af_shared.http import ApiError, error, respond
 from af_shared.log import get_logger
@@ -31,10 +33,9 @@ def route(event: dict[str, Any], table: Any, sfn: Any, now: str) -> dict[str, An
     try:
         (_, _, fn, allowed, status), params = routes.match(method, path)
         ctx = routes.Ctx(table, sfn, now, event, params)
-        if os.environ.get("AF_AUTH_DISABLED") != "true" and not ctx.groups & allowed:
-            if not ctx.groups:
-                raise ApiError(401, "UNAUTHORIZED", "Missing Cognito groups in the token")
-            raise ApiError(403, "FORBIDDEN", f"Requires one of: {', '.join(sorted(allowed))}")
+        if os.environ.get("AF_AUTH_DISABLED") != "true":
+            ctx.principal = grants.load(table, event)
+            grants.require(ctx.principal, allowed, routes.operation_of(ctx))
         return respond(status, fn(ctx))
     except ApiError as exc:
         if exc.status >= 500:

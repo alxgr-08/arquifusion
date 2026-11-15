@@ -17,6 +17,11 @@ con la flota de `contracts/examples/fleet-config.json` y las reglas reales de `a
 | `af-dev-notify` | Step Functions | 30 s | `AF_TABLE_NAME` |
 | `af-dev-api` | API Gateway (todas las rutas menos `/simulator/faults`) | 15 s | `AF_TABLE_NAME`, `AF_OPERATION_ID` (MINA-NORTE, para `GET /parts`) |
 
+Login (decisión #42, sin Cognito): el autorizador JWT del HTTP API usa issuer `https://accounts.google.com` y
+audience = Client ID de OAuth de GCP. Los roles se cargan en DynamoDB con `scripts/seed_grants.py` (el `sub` de cada
+cuenta de Google aparece en el claim `sub`; si no tiene permiso, la API responde 403 `NO_GRANT`). `af-dev-fault-injector`
+usa los mismos permisos (necesita `AF_TABLE_NAME`).
+
 Empaquetado: cada `services/<x>/` + `shared/af_shared/` en el mismo zip, más una capa con `pydantic>=2.7`.
 boto3 viene en el runtime. Powertools es opcional (si la capa está, el logger la usa).
 

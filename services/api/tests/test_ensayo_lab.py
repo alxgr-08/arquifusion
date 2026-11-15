@@ -62,6 +62,7 @@ def lab_harness(case2: bool = False) -> Harness:
     h = Harness()
     put(h, "item-machine.json")
     put(h, "item-technician.json")
+    put(h, "item-grant-operador.json")
     h.ssm.params[config.INCIDENT_SETTINGS] = json.dumps(lab("incident-settings-lab.json"))
     if case2:
         put(h, "item-stock-caso2.json")

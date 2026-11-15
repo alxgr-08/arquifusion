@@ -382,6 +382,7 @@ class FakeTable:
         self.name = name
         self.items: dict[tuple[str, str], dict[str, Any]] = {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.meta = _Meta(_FakeClient(self))
 
     # -- helpers
     def _key(self, key: dict[str, Any]) -> tuple[str, str]:
@@ -503,6 +504,64 @@ class FakeTable:
 
     def batch_writer(self, **_: Any) -> _BatchWriter:
         return _BatchWriter(self)
+
+
+class _Meta:
+    def __init__(self, client: _FakeClient) -> None:
+        self.client = client
+
+
+class _FakeClient:
+    """Low-level client: only transact_write_items (typed AttributeValues), all-or-nothing like DynamoDB."""
+
+    def __init__(self, table: FakeTable) -> None:
+        self.table = table
+
+    def transact_write_items(self, TransactItems: list[dict[str, Any]], **_: Any) -> dict:  # noqa: N803
+        from boto3.dynamodb.types import TypeDeserializer
+        from botocore.exceptions import ClientError
+
+        de = TypeDeserializer()
+        self.table.calls.append(("transact_write_items", {"count": len(TransactItems)}))
+
+        def plain(values: dict[str, Any] | None) -> dict[str, Any] | None:
+            return None if values is None else {k: de.deserialize(v) for k, v in values.items()}
+
+        parsed = []
+        for action in TransactItems:
+            ((kind, spec),) = action.items()
+            assert spec.get("TableName") == self.table.name, spec.get("TableName")
+            key = plain(spec.get("Key")) or {
+                k: v for k, v in (plain(spec.get("Item")) or {}).items() if k in ("PK", "SK")
+            }
+            parsed.append((kind, spec, key, plain(spec.get("ExpressionAttributeValues")), plain(spec.get("Item"))))
+        reasons = []
+        for _kind, spec, key, values, _ in parsed:
+            existing = self.table.items.get(self.table._key(key)) or {}
+            names = spec.get("ExpressionAttributeNames")
+            _check_unused(values, names, spec.get("UpdateExpression"), spec.get("ConditionExpression"))
+            ok = eval_condition(spec.get("ConditionExpression"), existing, names, values)
+            reasons.append({"Code": "None"} if ok else {"Code": "ConditionalCheckFailed"})
+        if any(r["Code"] != "None" for r in reasons):
+            raise ClientError(
+                {
+                    "Error": {"Code": "TransactionCanceledException", "Message": "Transaction cancelled"},
+                    "CancellationReasons": reasons,
+                },
+                "TransactWriteItems",
+            )
+        for kind, spec, key, values, item in parsed:
+            names = spec.get("ExpressionAttributeNames")
+            if kind == "Update":
+                current = copy.deepcopy(self.table.items.get(self.table._key(key)) or dict(key))
+                apply_update(spec["UpdateExpression"], current, names, values)
+                _check_no_float(current, "Item")
+                self.table.items[self.table._key(key)] = current
+            elif kind == "Put":
+                self.table.items[self.table._key(key)] = copy.deepcopy(item)
+            elif kind == "Delete":
+                self.table.items.pop(self.table._key(key), None)
+        return {}
 
 
 class _BatchWriter:

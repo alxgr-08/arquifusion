@@ -12,7 +12,8 @@ la Step Function, las Lambdas reales y la API invocada directamente.
 | `incident-settings-lab.json` | `/af/incident/settings` con esperas cortas y `partsFromOtherWarehouses: false` |
 | `anomaly-caso1-vibracion.json` | Caso 1: `WARNING` solo por vibración → `DRIVETRAIN`, sin repuesto: reserva con cero piezas |
 | `anomaly-caso2-rodamiento.json` | Caso 2: vibración + temperatura → `BEARING` → `BRG-SPH-22` de `WH-ENSAYO` |
-| `api-ack-arrived.json`, `api-ack-resolved.json` | Evento para invocar `af-dev-api` directo (sin API Gateway), como `MAINT_LEAD` |
+| `item-grant-operador.json` | Permiso `MAINT_LEAD` en `MINA-ENSAYO` para la identidad del operador del ensayo |
+| `api-ack-arrived.json`, `api-ack-resolved.json` | Evento para invocar `af-dev-api` directo (sin API Gateway), con esa identidad |
 
 El token de tarea nunca sale de DynamoDB: la API lo lee y llama a `SendTaskSuccess`. No usar
 `aws stepfunctions send-task-success` a mano (habría que copiar el token y se saltaría el timeline).
@@ -26,6 +27,7 @@ aws ssm get-parameter --name /af/incident/settings --query Parameter.Value --out
 # 1. Perfiles y configuración del ensayo
 aws dynamodb put-item --table-name $T --item file://item-machine.json
 aws dynamodb put-item --table-name $T --item file://item-technician.json
+aws dynamodb put-item --table-name $T --item file://item-grant-operador.json
 aws ssm put-parameter --name /af/incident/settings --type String --overwrite --value file://incident-settings-lab.json
 # 2. Ejecución directa (sin la regla de EventBridge)
 aws stepfunctions start-execution --state-machine-arn <arn af-dev-incident> --name ensayo-caso1-01 \
@@ -55,7 +57,7 @@ Con `partsFromOtherWarehouses: false` el flujo nunca toma piezas de `WH-NORTE` n
 ## Limpieza
 
 Restaurar `/af/incident/settings` (y `/af/sim/fleet-config` si se usó el caso 2) con los respaldos y borrar las
-filas `MACHINE#EXC-E001` (PROFILE, INCIDENT#…, MAINT#…), `TECH#T-E1` y `PART#BRG-SPH-22` / `STOCK#WH-ENSAYO`.
+filas `MACHINE#EXC-E001` (PROFILE, INCIDENT#…, MAINT#…), `TECH#T-E1`, `GRANT#accounts.google.com#ensayo-operador` y `PART#BRG-SPH-22` / `STOCK#WH-ENSAYO`.
 Si una ejecución queda colgada en una espera, detenerla con `aws stepfunctions stop-execution` y borrar
 `openIncidentId`/`openIncidentExecution` del perfil de la máquina (o volver a cargar `item-machine.json` e
 `item-technician.json`, que también deja al técnico libre).

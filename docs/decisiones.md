@@ -16,3 +16,4 @@
 | 2026-11-15 | Claim stores `openIncidentExecution` (`$$.Execution.Id`); the incident ID derives from it | A retried claim whose response was lost must continue its own incident, not end as a duplicate and leave the machine blocked |
 | 2026-11-15 | Setting `partsFromOtherWarehouses` (default true) | Lab rehearsal with an isolated warehouse must never take shared stock |
 | 2026-11-15 | Claim keeps `lastIncidentDetectedAt`; an older or equal `detectedAt` with no open incident is ignored | The health-evaluator outbox (#44) may re-publish an alert whose incident was already handled |
+| 2026-11-15 | Login with Google (API Gateway JWT authorizer), roles in DynamoDB `GRANT#{iss}#{sub}` / `OP#{op}`; no Cognito | Team decision (#42); a role per operation, revocable and re-checked in the same transaction as the ack |

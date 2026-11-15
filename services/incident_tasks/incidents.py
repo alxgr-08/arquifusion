@@ -608,17 +608,23 @@ def reserve_parts(table: Any, payload: dict[str, Any], fleet: FleetConfig, now: 
     return {"reserved": reserved, "missing": missing, "hasMissing": bool(missing), "component": component}
 
 
-def _settle_parts(
-    table: Any, incident_id: str, reserved: list[dict[str, Any]], used: list[dict[str, Any]], now: str
-) -> list[dict[str, Any]]:
-    """On close: consume what was used, return the rest to `available`. Idempotent (removes the reservation)."""
+def plan_usage(reserved: list[dict[str, Any]], used: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """How much of each reservation is consumed: what the technician reported, capped by what was reserved."""
     used_qty: dict[str, int] = {}
     for u in used:
         used_qty[u["partId"]] = used_qty.get(u["partId"], 0) + int(u["qty"])
-    consumed = []
+    plan = []
     for r in reserved:
         take = min(used_qty.get(r["partId"], 0), int(r["qty"]))
         used_qty[r["partId"]] = used_qty.get(r["partId"], 0) - take
+        plan.append({"partId": r["partId"], "warehouse": r["warehouse"], "reserved": int(r["qty"]), "take": take})
+    return plan
+
+
+def _settle_parts(table: Any, incident_id: str, plan: list[dict[str, Any]], now: str) -> None:
+    """Consume what was used and return the rest to `available`, exactly once per reservation: the update is
+    conditional on `reservations.{incidentId}` and removes it, so a retried close changes nothing."""
+    for r in plan:
         _ignore_conditional(
             table.update_item,
             Key={"PK": f"PART#{r['partId']}", "SK": f"STOCK#{r['warehouse']}"},
@@ -627,15 +633,12 @@ def _settle_parts(
             ConditionExpression="attribute_exists(reservations.#inc)",
             ExpressionAttributeNames={"#inc": incident_id},
             ExpressionAttributeValues={
-                ":take": take,
-                ":res": int(r["qty"]),
-                ":back": int(r["qty"]) - take,
+                ":take": r["take"],
+                ":res": r["reserved"],
+                ":back": r["reserved"] - r["take"],
                 ":now": now,
             },
         )
-        if take:
-            consumed.append({**r, "qty": take})
-    return consumed
 
 
 # ----------------------------------------------------------------------------------------------- waits
@@ -681,12 +684,25 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     if row.get("GSI1PK", "").endswith("#CLOSED"):
         return {"incidentId": inc["incidentId"], "alreadyClosed": True, "downtimeMinutes": row.get("downtimeMinutes")}
 
+    # Freeze what this close does on the first attempt, so a retry (Lambda or Step Functions) repeats exactly
+    # the same work: same date for the MAINT# record, same parts. Then every write below is idempotent.
     resolution = payload.get("resolution") or {}
-    resolved_at = resolution.get("at") or now
-    downtime = max(0, round((parse_iso(resolved_at) - parse_iso(inc["detectedAt"])).total_seconds() / 60))
     reserved = row.get("partsReserved", [])
     used_input = resolution.get("partsUsed")
-    used = _settle_parts(table, inc["incidentId"], reserved, reserved if used_input is None else used_input, now)
+    plan = plan_usage(reserved, reserved if used_input is None else used_input)
+    closing = from_ddb(
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET closing = if_not_exists(closing, :c)",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues=to_ddb({":c": {"resolvedAt": resolution.get("at") or now, "plan": plan}}),
+            ReturnValues="ALL_NEW",
+        )["Attributes"]["closing"]
+    )
+    resolved_at, plan = closing["resolvedAt"], closing["plan"]
+    downtime = max(0, round((parse_iso(resolved_at) - parse_iso(inc["detectedAt"])).total_seconds() / 60))
+    _settle_parts(table, inc["incidentId"], plan, now)
+    used = [{"partId": r["partId"], "warehouse": r["warehouse"], "qty": r["take"]} for r in plan if r["take"]]
     component = (row.get("aiDiagnosis") or {}).get("component")
     recurrence = _recurrence(table, inc, component, int(inc["settings"].get("recurrenceWindowDays", 30)))
     tech = row.get("assignedTech")
@@ -741,9 +757,11 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     if recurrence:
         sets.append("recurrenceOf = :rec")
         values[":rec"] = recurrence
-    table.update_item(
+    _ignore_conditional(  # a concurrent retry may have closed it already: keep the first close
+        table.update_item,
         Key=key,
         UpdateExpression="SET " + ", ".join(sets) + " REMOVE taskToken, pendingStage",
+        ConditionExpression="GSI1PK <> :gsi1pk",
         ExpressionAttributeNames={"#st": "state"},
         ExpressionAttributeValues=to_ddb(values),
     )
