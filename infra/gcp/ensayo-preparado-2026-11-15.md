@@ -28,7 +28,7 @@ Se construyeron dos veces los tres paquetes y se obtuvieron exactamente los mism
 | `lake-to-bigquery.zip` | `2106db46bbcc08604e42cc0601316cecadacc4ccce03e0f8abebefca6b107ddf` | 35 329 764 / 76 330 291 |
 | `bigquery-sync-back.zip` | `7ec3436961aeb38ebbb95c49a567aa5cda1676a2efd972ca2c4a277cf4304e1f` | 35 771 120 / 77 970 446 |
 
-El constructor usa CPython 3.12 y ruedas Linux fijadas por SHA-256. El informe de paquetes y el resultado de importación están en el directorio local de evidencia. No se ejecutó en esta máquina un nuevo smoke nativo Linux.
+El constructor usa CPython 3.12 y ruedas Linux fijadas por SHA-256. El informe de paquetes y el resultado de importación están en el directorio local de evidencia. El smoke de fuentes Windows pasó; después la [CI publicada](https://github.com/alxgr-08/arquifusion/actions/runs/43710823184) importó nativamente los tres ZIP en Linux x86_64 / CPython 3.12 y confirmó hashes idénticos a los locales.
 
 ## Estado de las dependencias
 
@@ -38,7 +38,7 @@ El constructor usa CPython 3.12 y ruedas Linux fijadas por SHA-256. El informe d
 | Entorno de pruebas del worktree anterior | Dependencias disponibles; no incluye pip | Se usa para pruebas y smoke de fuentes; el build usa Python del host. |
 | `gcloud` y `bq` | Al inicio faltaban en PATH; después se preparó CLI portátil oficial 593.0.0, con bq incluido, sin PATH global | Falta habilitar una sesión personal autorizada; no se consultó el proyecto real. [Activación local](cli-portable.md) |
 | Sesión Google autorizada | Pendiente de habilitación y comprobación por el operador | No se leyó una llave privada ni se hicieron cargas o consultas. |
-| Docker/WSL Linux | No disponibles como entorno Linux operativo | El smoke nativo nuevo queda pendiente; el smoke de fuentes Windows se separa de él. |
+| Docker/WSL Linux | No disponibles como entorno Linux operativo local | La CI publicada comprobó importación nativa Linux de los tres ZIP; el smoke de fuentes Windows es una comprobación separada. |
 | Lago permanente AWS | Requiere revisión y despliegue de su propia etapa | El bucket de estado Terraform nunca es destino de datos. |
 | Staging BigQuery | Existencia, US y TTL no comprobados en cloud | El flag `--bridge` hará la comprobación con una instalación autenticada. |
 | Salida del mismo caso en `af_out.daily_kpis` | Pendiente de cálculo por Alexis | Un resultado histórico de otra máquina no sirve como evidencia del retorno. |
