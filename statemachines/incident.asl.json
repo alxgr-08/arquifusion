@@ -659,7 +659,10 @@
           "action": "store_task_token",
           "stage": "ARRIVAL",
           "taskToken.$": "$$.Task.Token",
-          "incident.$": "$.incident"
+          "incident.$": "$.incident",
+          "executionId.$": "$$.Execution.Id",
+          "enteredTime.$": "$$.State.EnteredTime",
+          "techId.$": "$.assignment.techId"
         }
       },
       "TimeoutSecondsPath": "$.incident.settings.techAckTimeoutSeconds",
@@ -685,6 +688,43 @@
           "ResultPath": "$.timeout",
           "Next": "ReleaseTechnician"
         },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "CertifyArrival"
+    },
+    "CertifyArrival": {
+      "Comment": "The workflow (not the API) records ARRIVED once, with the ackId/generation it accepted (evidence for /ack)",
+      "Type": "Task",
+      "Resource": "${incident_tasks_arn}",
+      "Parameters": {
+        "action": "certify_ack",
+        "stage": "ARRIVAL",
+        "incident.$": "$.incident",
+        "ack.$": "$.arrival",
+        "executionId.$": "$$.Execution.Id"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ClientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
         {
           "ErrorEquals": [
             "States.ALL"
@@ -773,7 +813,10 @@
           "action": "store_task_token",
           "stage": "RESOLUTION",
           "taskToken.$": "$$.Task.Token",
-          "incident.$": "$.incident"
+          "incident.$": "$.incident",
+          "executionId.$": "$$.Execution.Id",
+          "enteredTime.$": "$$.State.EnteredTime",
+          "techId.$": "$.assignment.techId"
         }
       },
       "TimeoutSecondsPath": "$.incident.settings.resolutionTimeoutSeconds",
@@ -849,7 +892,8 @@
       "Parameters": {
         "action": "close_incident",
         "incident.$": "$.incident",
-        "resolution.$": "$.resolution"
+        "resolution.$": "$.resolution",
+        "executionId.$": "$$.Execution.Id"
       },
       "ResultPath": "$.closed",
       "Retry": [

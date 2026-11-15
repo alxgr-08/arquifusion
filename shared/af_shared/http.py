@@ -1,4 +1,4 @@
-"""API Gateway (HTTP API, payload v2) helpers: responses, errors and Cognito groups."""
+"""API Gateway (HTTP API, payload v2) helpers: responses, errors, headers and JWT claims."""
 
 from __future__ import annotations
 
@@ -10,27 +10,45 @@ from af_shared.ddb import from_ddb
 
 CORS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,If-Match",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Expose-Headers": "ETag,Retry-After",
 }
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(self, status: int, code: str, message: str, headers: dict[str, str] | None = None) -> None:
         super().__init__(message)
         self.status, self.code, self.message = status, code, message
+        self.headers = headers or {}
 
 
-def respond(status: int, body: Any) -> dict[str, Any]:
+class Reply:
+    """A route result with its own status and/or headers (e.g. ETag)."""
+
+    def __init__(self, body: Any, status: int | None = None, headers: dict[str, str] | None = None) -> None:
+        self.body, self.status, self.headers = body, status, headers or {}
+
+
+def respond(status: int, body: Any, headers: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "statusCode": status,
-        "headers": {"Content-Type": "application/json", **CORS},
+        "headers": {"Content-Type": "application/json", **CORS, **(headers or {})},
         "body": json.dumps(from_ddb(body), ensure_ascii=False),
     }
 
 
 def error(exc: ApiError) -> dict[str, Any]:
-    return respond(exc.status, {"error": {"code": exc.code, "message": exc.message}})
+    return respond(exc.status, {"error": {"code": exc.code, "message": exc.message}}, exc.headers)
+
+
+def header(event: dict[str, Any], name: str) -> str | None:
+    """Request header, case-insensitive (HTTP API v2 lowercases them, REST v1 does not)."""
+    wanted = name.lower()
+    for key, value in (event.get("headers") or {}).items():
+        if key.lower() == wanted:
+            return value
+    return None
 
 
 def json_body(event: dict[str, Any]) -> dict[str, Any]:
@@ -49,21 +67,6 @@ def json_body(event: dict[str, Any]) -> dict[str, Any]:
 def claims(event: dict[str, Any]) -> dict[str, Any]:
     authorizer = event.get("requestContext", {}).get("authorizer", {}) or {}
     return (authorizer.get("jwt") or {}).get("claims") or authorizer.get("claims") or {}
-
-
-def groups(event: dict[str, Any]) -> set[str]:
-    """Cognito groups from the JWT. HTTP API serialises lists as '[A B]'."""
-    raw = claims(event).get("cognito:groups", [])
-    if isinstance(raw, str):
-        raw = raw.strip("[]").replace(",", " ").split()
-    return {g.strip() for g in raw if g and g.strip()}
-
-
-def require_group(event: dict[str, Any], allowed: set[str]) -> set[str]:
-    user_groups = groups(event)
-    if not user_groups & allowed:
-        raise ApiError(403, "FORBIDDEN", f"Requires one of: {', '.join(sorted(allowed))}")
-    return user_groups
 
 
 def encode_token(key: dict[str, Any] | None) -> str | None:

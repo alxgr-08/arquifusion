@@ -14,7 +14,7 @@ from typing import Any
 import routes
 from af_shared import grants
 from af_shared.ddb import get_table, now_iso
-from af_shared.http import ApiError, error, respond
+from af_shared.http import ApiError, Reply, error, respond
 from af_shared.log import get_logger
 
 logger = get_logger("api")
@@ -36,7 +36,10 @@ def route(event: dict[str, Any], table: Any, sfn: Any, now: str) -> dict[str, An
         if os.environ.get("AF_AUTH_DISABLED") != "true":
             ctx.principal = grants.load(table, event)
             grants.require(ctx.principal, allowed, routes.operation_of(ctx))
-        return respond(status, fn(ctx))
+        result = fn(ctx)
+        if isinstance(result, Reply):
+            return respond(result.status or status, result.body, result.headers)
+        return respond(status, result)
     except ApiError as exc:
         if exc.status >= 500:
             logger.exception("api error", path=path)

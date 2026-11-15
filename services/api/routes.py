@@ -9,6 +9,7 @@ returned.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -25,7 +26,7 @@ from af_shared.ddb import (
     parse_iso,
     transact_write,
 )
-from af_shared.http import ApiError
+from af_shared.http import ApiError, Reply, header
 from boto3.dynamodb.conditions import Attr, Key
 
 ALL = {"OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER"}
@@ -312,7 +313,7 @@ def kpis(ctx: Ctx) -> list[dict[str, Any]]:
 
 
 ACK_STAGES = {"ARRIVED": "ARRIVAL", "RESOLVED": "RESOLUTION"}
-EXPIRED_CODES = {"TaskTimedOut", "InvalidToken", "TaskDoesNotExist"}
+LEGACY_WAIT = "legacy"  # a wait stored before v1.1 (no generation): it needs reconciliation, never a blind ack
 
 
 def _find_incident(ctx: Ctx, machine_id: str, incident_id: str) -> dict[str, Any]:
@@ -342,6 +343,13 @@ def operation_of(ctx: Ctx) -> str | None:
     return None
 
 
+def _actor(ctx: Ctx, grant: grants.Grant | None, incident: dict[str, Any]) -> dict[str, Any]:
+    """Who really confirms (also when a lead confirms for the technician). Internal: never in the DTO."""
+    if grant is None:  # AF_AUTH_DISABLED (local tests only)
+        return {"sub": "local", "role": "LOCAL", "techId": incident.get("assignedTech")}
+    return {"iss": grant.iss, "sub": grant.sub, "role": grant.role, "techId": grant.tech_id}
+
+
 def _authorize_ack(ctx: Ctx, incident: dict[str, Any]) -> tuple[str, grants.Grant | None]:
     """Grant in the incident's operation; technicians only for incidents assigned to them. Returns (who, grant)."""
     if ctx.principal is None:  # AF_AUTH_DISABLED
@@ -360,183 +368,247 @@ def _authorize_ack(ctx: Ctx, incident: dict[str, Any]) -> tuple[str, grants.Gran
     return grant.tech_id, grant
 
 
-def _is_closed(incident: dict[str, Any]) -> bool:
-    return incident.get("GSI1PK", "").endswith("#CLOSED") or bool(incident.get("closedAt"))
+def current_generation(incident: dict[str, Any]) -> str | None:
+    """Version of the wait the incident is in now (None = not waiting for a confirmation)."""
+    if incident.get("taskToken") and incident.get("pendingStage") and not incident.get("flowFailed"):
+        return incident.get("waitGeneration") or LEGACY_WAIT
+    return None
 
 
-def _has_event(incident: dict[str, Any], action: str) -> bool:
-    return any(e.get("event") == action for e in incident.get("timeline", []))
+def etag(incident: dict[str, Any]) -> dict[str, str]:
+    gen = current_generation(incident)
+    return {"ETag": f'"{gen}"'} if gen and gen != LEGACY_WAIT else {}
 
 
-def _finalize(ctx: Ctx, incident: dict[str, Any], pending: dict[str, Any]) -> dict[str, Any]:
-    """Record the confirmed step once (conditional on the pending callback) and drop the consumed token."""
-    action = pending["action"]
-    event = {"at": pending["at"], "event": action, **({"tech": pending["tech"]} if pending.get("tech") else {})}
-    key = {"PK": incident["PK"], "SK": incident["SK"]}
-    try:
-        ctx.table.update_item(
-            Key=key,
-            UpdateExpression="SET #st = :s, timeline = list_append(timeline, :ev) REMOVE pendingAck",
-            ConditionExpression="pendingAck.#tok = :tok",
-            ExpressionAttributeNames={"#st": "state", "#tok": "token"},
-            ExpressionAttributeValues={
-                ":s": "IN_PROGRESS" if action == "ARRIVED" else "RESOLVED",
-                ":tok": pending["token"],
-                ":ev": [event],
-            },
-        )
-    except Exception as exc:
-        if not is_conditional_failure(exc):  # another request already finalized it
-            raise
-    try:  # the next wait may already have stored a new token: only remove ours
-        ctx.table.update_item(
-            Key=key,
-            UpdateExpression="REMOVE taskToken, pendingStage",
-            ConditionExpression="taskToken = :tok",
-            ExpressionAttributeValues={":tok": pending["token"]},
-        )
-    except Exception as exc:
-        if not is_conditional_failure(exc):
-            raise
-    return _reload(ctx, incident)
+def _if_match(ctx: Ctx) -> str:
+    raw = header(ctx.event, "If-Match")
+    if not raw:
+        raise ApiError(428, "PRECONDITION_REQUIRED", "Send If-Match with the ETag of GET .../incidents/{incId}")
+    value = raw.strip().removeprefix("W/").strip().strip('"')
+    if not value or value == "*":
+        raise ApiError(428, "PRECONDITION_REQUIRED", "If-Match must be the ETag of the incident, not *")
+    return value
 
 
-def _after_expired(current: dict[str, Any], pending: dict[str, Any]) -> tuple[str, str | None]:
-    """Step Functions rejected the token. Decide if an earlier attempt was delivered (response lost),
-    if the wait really expired, or if there is a newer wait for the same stage to deliver to."""
-    if pending["stage"] == "ARRIVAL":
-        if current.get("pendingStage") == "RESOLUTION" or _is_closed(current):
-            return "DELIVERED", None
-        if current.get("assignedTech") != pending.get("assignedTech"):
-            return "EXPIRED", None  # timeout -> technician released and the incident reassigned
-        return "UNKNOWN", None
-    if _is_closed(current):
-        return "DELIVERED", None
-    newer = current.get("taskToken")
-    if current.get("pendingStage") == "RESOLUTION" and newer and newer != pending["token"]:
-        return "RETRY", newer  # long-downtime timeout re-armed the wait with a new token
-    return "UNKNOWN", None
-
-
-def ack(ctx: Ctx) -> dict[str, Any]:
-    """Technician confirms ARRIVED or RESOLVED and the waiting Step Function resumes. Returns the Incident.
-
-    Safe to repeat: the first request stores the callback (`pendingAck`) before calling SendTaskSuccess, so
-    - a second click after success returns 200 with the incident and does not call Step Functions again;
-    - if the call to Step Functions fails or its answer is lost, repeating the request delivers the same callback.
-    """
-    body = ctx.body()
+def _command(body: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+    """(action, stage, normalized command). Keeps {action} and the legacy alias {event}."""
     action = str(body.get("action") or body.get("event") or "").upper()
     stage = ACK_STAGES.get(action)
     if stage is None:
         raise ApiError(400, "INVALID_ACTION", "action must be ARRIVED or RESOLVED")
     parts_used = body.get("partsUsed")
-    if parts_used is not None and (
-        not isinstance(parts_used, list)
-        or not all(isinstance(p, dict) and p.get("partId") and int(p.get("qty", 0)) > 0 for p in parts_used)
-    ):
-        raise ApiError(400, "INVALID_PARTS", "partsUsed must be a list of {partId, qty>0}")
+    if parts_used is not None:
+        try:
+            ok = isinstance(parts_used, list) and all(
+                isinstance(p, dict) and p.get("partId") and int(p.get("qty", 0)) > 0 for p in parts_used
+            )
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise ApiError(400, "INVALID_PARTS", "partsUsed must be a list of {partId, qty>0}")
+        parts_used = sorted(
+            ({"partId": str(p["partId"]), "qty": int(p["qty"])} for p in parts_used),
+            key=lambda p: (p["partId"], p["qty"]),
+        )
+    notes = body.get("notes")
+    command = {"action": action, "partsUsed": parts_used, "notes": None if notes is None else str(notes)}
+    return action, stage, command
 
+
+def _fingerprint(command: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(command, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _receipt_key(incident: dict[str, Any], stage: str, generation: str) -> dict[str, str]:
+    return {"PK": incident["PK"], "SK": f"ACK#{incident['incidentId']}#{stage}#{generation}"}
+
+
+def _get_receipt(ctx: Ctx, key: dict[str, str]) -> dict[str, Any] | None:
+    item = ctx.table.get_item(Key=key, ConsistentRead=True).get("Item")
+    return from_ddb(item) if item else None
+
+
+def _mark(ctx: Ctx, key: dict[str, str], status: str) -> None:
+    try:
+        ctx.table.update_item(
+            Key=key,
+            UpdateExpression="SET #s = :s, settledAt = :now",
+            ConditionExpression="#s = :pending",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": status, ":pending": "PENDING", ":now": ctx.now},
+        )
+    except Exception as exc:
+        if not is_conditional_failure(exc):
+            raise
+
+
+def _view(incident: dict[str, Any], receipt: dict[str, Any]) -> dict[str, Any]:
+    """Incident DTO after a delivered ack. The workflow writes the timeline a moment later (CertifyArrival /
+    CloseIncident); until then the answer shows the confirmed effect of this ack."""
+    out = incident_out(incident)
+    certified = (incident.get("certified") or {}).get(receipt["stage"])
+    if not certified:
+        event = {"at": receipt["at"], "event": receipt["action"]}
+        if incident.get("assignedTech"):
+            event["tech"] = incident["assignedTech"]
+        out["timeline"] = [*out["timeline"], event]
+        out["state"] = "IN_PROGRESS" if receipt["action"] == "ARRIVED" else "RESOLVED"
+    return out
+
+
+def _evidence(incident: dict[str, Any], receipt: dict[str, Any]) -> str:
+    """What the stored data proves about a receipt whose SendTaskSuccess failed or whose answer was lost.
+
+    ACCEPTED: the execution certified this ackId. REJECTED: the wait is over and the execution certified another
+    ack, failed, or moved to a newer wait without certifying ours. PENDING: not enough evidence yet (retry).
+    InvalidToken alone proves nothing: only the certification written by the workflow counts.
+    """
+    certified = (incident.get("certified") or {}).get(receipt["stage"]) or {}
+    if certified.get("ackId") == receipt["ackId"]:
+        return "ACCEPTED"
+    if certified or incident.get("flowFailed"):
+        return "REJECTED"
+    if current_generation(incident) == receipt["generation"]:
+        return "PENDING"
+    # Our wait is gone and nobody certified this stage: a newer wait was registered (time-out/reassignment;
+    # an accepted ack is always certified before the next wait exists) or the incident was closed elsewhere.
+    return "REJECTED"
+
+
+def get_incident(ctx: Ctx) -> Reply:
+    """One incident with ETag = version of the wait it is in now (send it back as If-Match in POST .../ack)."""
+    incident = _find_incident(ctx, ctx.params["id"], ctx.params["incId"])
+    return Reply(incident_out(incident), headers=etag(incident))
+
+
+def ack(ctx: Ctx) -> Reply:
+    """Technician (or lead) confirms ARRIVED / RESOLVED of the wait they saw (If-Match = its ETag).
+
+    1. A durable receipt ACK#{incId}#{stage}#{generation} is claimed in one transaction with the grant (role,
+       techId, version) and the wait (generation, stage, assigned tech). Same actor + same body = same receipt.
+    2. SendTaskSuccess with the receipt's token and payload (ackId, generation, execution, actor).
+    3. If that fails or the answer is lost, the workflow's certification decides (see _evidence).
+    """
+    action, stage, command = _command(ctx.body())
+    wanted = _if_match(ctx)
     incident = _find_incident(ctx, ctx.params["id"], ctx.params["incId"])
     who, grant = _authorize_ack(ctx, incident)
-    pending = incident.get("pendingAck") or {}
+    actor = _actor(ctx, grant, incident)
+    fingerprint = _fingerprint(command)
+    key = _receipt_key(incident, stage, wanted)
+    receipt = _get_receipt(ctx, key)
 
-    # A stale ARRIVED callback that was delivered but never finalized (its response was lost): finish it first.
-    if pending and pending.get("stage") != stage:
-        if pending.get("stage") == "ARRIVAL" and incident.get("pendingStage") == "RESOLUTION":
-            incident = _finalize(ctx, incident, pending)
-        pending = incident.get("pendingAck") or {}
-
-    if not (pending and pending.get("stage") == stage):
-        if _has_event(incident, action):
-            return incident_out(incident)  # repeated click: already confirmed
-        token = incident.get("taskToken")
-        if incident.get("pendingStage") != stage or not token:
+    if receipt is None:
+        current = current_generation(incident)
+        if current == LEGACY_WAIT:
+            raise ApiError(
+                409,
+                "WAIT_NEEDS_RECONCILIATION",
+                "This wait has no version (registered before v1.2); it must be reconciled first",
+            )
+        if current is None or incident.get("pendingStage") != stage:
+            if current is not None and current != wanted:
+                raise ApiError(412, "STALE_WAIT", "The incident changed; reload it", etag(incident))
             waiting = incident.get("pendingStage") or "none"
-            raise ApiError(409, "WRONG_STAGE", f"Incident is not waiting for {action} (waiting for: {waiting})")
-        output = {"event": action, "at": ctx.now, "by": who, "notes": body.get("notes")}
-        if parts_used is not None:
-            output["partsUsed"] = [{"partId": p["partId"], "qty": int(p["qty"])} for p in parts_used]
-        assigned = incident.get("assignedTech")
-        pending = {
+            raise ApiError(
+                409, "WRONG_STAGE", f"Incident is not waiting for {action} (waiting for: {waiting})", etag(incident)
+            )
+        if current != wanted:
+            raise ApiError(412, "STALE_WAIT", "The incident changed; reload it", etag(incident))
+        ack_id = hashlib.sha256(f"{incident['incidentId']}|{stage}|{wanted}".encode()).hexdigest()[:20]
+        payload = {
+            "event": action,
+            "at": ctx.now,
+            "by": who,
+            "notes": command["notes"],
+            "ackId": ack_id,
+            "generation": wanted,
+            "executionId": incident.get("waitExecution"),
+            "actor": actor,
+        }
+        if command["partsUsed"] is not None:
+            payload["partsUsed"] = command["partsUsed"]
+        receipt = {
+            **key,
+            "ackId": ack_id,
+            "incidentId": incident["incidentId"],
             "stage": stage,
             "action": action,
-            "token": token,
+            "generation": wanted,
+            "executionId": incident.get("waitExecution"),
+            "token": incident["taskToken"],
+            "actor": actor,
+            "fingerprint": fingerprint,
             "at": ctx.now,
-            "tech": assigned,
-            "assignedTech": assigned,
-            "output": json.dumps(output),
+            "payload": json.dumps(payload, ensure_ascii=False),
+            "status": "PENDING",
         }
-        cond = "taskToken = :tok AND pendingStage = :stage AND attribute_not_exists(pendingAck)"
-        values: dict[str, Any] = {":p": pending, ":tok": token, ":stage": stage}
+        wait_cond = "waitGeneration = :gen AND pendingStage = :stage AND taskToken = :tok"
+        wait_values: dict[str, Any] = {":gen": wanted, ":stage": stage, ":tok": incident["taskToken"]}
         if grant is not None and grant.role == "TECHNICIAN":
-            cond += " AND assignedTech = :assigned"
-            values[":assigned"] = grant.tech_id
-        store = {
-            "Update": {
-                "Key": {"PK": incident["PK"], "SK": incident["SK"]},
-                "UpdateExpression": "SET pendingAck = :p",
-                "ConditionExpression": cond,
-                "ExpressionAttributeValues": values,
-            }
-        }
-        try:  # grant (role, techId, version) and assignment re-checked in the same transaction as the receipt
-            transact_write(ctx.table, ([grants.condition_check(grant)] if grant else []) + [store])
+            wait_cond += " AND assignedTech = :tech"
+            wait_values[":tech"] = grant.tech_id
+        actions = [grants.condition_check(grant)] if grant else []
+        actions += [
+            {
+                "ConditionCheck": {
+                    "Key": {"PK": incident["PK"], "SK": incident["SK"]},
+                    "ConditionExpression": wait_cond,
+                    "ExpressionAttributeValues": wait_values,
+                }
+            },
+            {"Put": {"Item": receipt, "ConditionExpression": "attribute_not_exists(PK)"}},
+        ]
+        try:
+            transact_write(ctx.table, actions)
         except Exception as exc:
             if not (is_transaction_conditional_failure(exc) or is_conditional_failure(exc)):
                 raise
-            reasons = (getattr(exc, "response", None) or {}).get("CancellationReasons") or []
-            if grant and reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+            reasons = [r.get("Code") for r in (getattr(exc, "response", None) or {}).get("CancellationReasons") or []]
+            offset = 1 if grant else 0
+            if grant and reasons[:1] == ["ConditionalCheckFailed"]:
                 raise ApiError(403, "GRANT_CHANGED", "Your access changed; reload and try again") from exc
-            current = _reload(ctx, incident)  # two clicks at the same time: continue with the one stored first
-            pending = current.get("pendingAck") or {}
-            if pending.get("stage") != stage:
-                if _has_event(current, action):
-                    return incident_out(current)
-                if grant and grant.role == "TECHNICIAN" and current.get("assignedTech") != grant.tech_id:
+            if len(reasons) > offset and reasons[offset] == "ConditionalCheckFailed":
+                fresh = _reload(ctx, incident)
+                if grant and grant.role == "TECHNICIAN" and fresh.get("assignedTech") != grant.tech_id:
                     raise ApiError(403, "NOT_ASSIGNED", "The incident was reassigned") from exc
-                raise ApiError(409, "WRONG_STAGE", f"Incident is not waiting for {action}") from exc
-            incident = current
+                raise ApiError(412, "STALE_WAIT", "The incident changed; reload it", etag(fresh)) from exc
+            receipt = _get_receipt(ctx, key)  # a concurrent click stored it first: continue with that one
+            if receipt is None:
+                raise
 
-    token = pending["token"]
-    delivered = False
-    for _ in range(2):
-        try:
-            ctx.sfn.send_task_success(taskToken=token, output=pending["output"])
-            delivered = True
-            break
-        except Exception as exc:
-            code = (getattr(exc, "response", None) or {}).get("Error", {}).get("Code", type(exc).__name__)
-            if code not in EXPIRED_CODES:
-                raise ApiError(
-                    503, "CALLBACK_PENDING", "Could not reach Step Functions; repeat the same action to retry"
-                ) from exc
-            verdict, newer = _after_expired(_reload(ctx, incident), pending)
-            if verdict == "DELIVERED":
-                delivered = True
-                break
-            if verdict == "RETRY" and newer:
-                ctx.table.update_item(
-                    Key={"PK": incident["PK"], "SK": incident["SK"]},
-                    UpdateExpression="SET pendingAck.#tok = :new",
-                    ExpressionAttributeNames={"#tok": "token"},
-                    ExpressionAttributeValues={":new": newer},
-                )
-                token = pending["token"] = newer
-                continue
-            if verdict == "EXPIRED":
-                ctx.table.update_item(
-                    Key={"PK": incident["PK"], "SK": incident["SK"]},
-                    UpdateExpression="REMOVE pendingAck",
-                    ConditionExpression="pendingAck.#tok = :tok",
-                    ExpressionAttributeNames={"#tok": "token"},
-                    ExpressionAttributeValues={":tok": token},
-                )
-                raise ApiError(409, "TASK_EXPIRED", "The wait expired; the incident was reassigned") from exc
-            raise ApiError(503, "CALLBACK_PENDING", "Confirmation in progress; repeat the same action") from exc
-    if not delivered:
-        raise ApiError(503, "CALLBACK_PENDING", "Confirmation in progress; repeat the same action")
-    return incident_out(_finalize(ctx, incident, pending))
+    if receipt["actor"].get("sub") != actor.get("sub"):
+        raise ApiError(409, "ACK_BY_OTHER", "This step was already confirmed by another user")
+    if receipt["fingerprint"] != fingerprint:
+        raise ApiError(409, "ACK_CONFLICT", "This step was already confirmed with other parts or notes")
+
+    if receipt["status"] in ("ACCEPTED", "DELIVERED"):
+        return Reply(_view(_reload(ctx, incident), receipt), headers=etag(_reload(ctx, incident)))
+    if receipt["status"] == "REJECTED":
+        raise ApiError(409, "TASK_EXPIRED", "The wait expired or changed; reload the incident", etag(incident))
+
+    try:
+        ctx.sfn.send_task_success(taskToken=receipt["token"], output=receipt["payload"])
+    except Exception as exc:
+        fresh = _reload(ctx, incident)
+        verdict = _evidence(fresh, receipt)
+        if verdict == "ACCEPTED":
+            _mark(ctx, key, "ACCEPTED")
+            return Reply(_view(fresh, receipt), headers=etag(fresh))
+        if verdict == "REJECTED":
+            _mark(ctx, key, "REJECTED")
+            raise ApiError(
+                409, "TASK_EXPIRED", "The wait expired or changed; reload the incident", etag(fresh)
+            ) from exc
+        raise ApiError(
+            503,
+            "CALLBACK_PENDING",
+            "Confirmation stored; repeat the same request (same If-Match and body)",
+            {"Retry-After": "2"},
+        ) from exc
+    _mark(ctx, key, "DELIVERED")
+    fresh = _reload(ctx, incident)
+    return Reply(_view(fresh, receipt), headers=etag(fresh))
 
 
 # ------------------------------------------------------------------------------------------------- routing
@@ -554,6 +626,7 @@ ROUTES: list[Route] = [
     _r("GET", "/machines/{id}", get_machine, ALL),
     _r("GET", "/machines/{id}/readings", list_readings, ALL),
     _r("GET", "/machines/{id}/incidents", machine_incidents, ALL),
+    _r("GET", "/machines/{id}/incidents/{incId}", get_incident, ALL),
     _r("GET", "/machines/{id}/maintenance", machine_maintenance, ALL),
     _r("GET", "/operations/{op}/incidents", operation_incidents, ALL),
     _r("GET", "/operations/{op}/technicians", technicians, ALL),

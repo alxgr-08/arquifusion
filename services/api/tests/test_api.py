@@ -40,9 +40,11 @@ def req(
     claims: dict | None,
     query: dict | None = None,
     body: dict | None = None,
+    headers: dict | None = None,
 ) -> dict:
     return {
         "rawPath": path,
+        "headers": headers or {},
         "queryStringParameters": query,
         "body": json.dumps(body) if body is not None else None,
         "requestContext": {
@@ -81,11 +83,19 @@ class TechnicianInTheWeb:
     def __call__(self, info: dict) -> dict:
         inc = info["payload"]["incident"]
         action = "ARRIVED" if info["payload"]["stage"] == "ARRIVAL" else "RESOLVED"
-        path = f"/machines/{inc['machineId']}/incidents/{inc['incidentId']}/ack"
+        path = f"/machines/{inc['machineId']}/incidents/{inc['incidentId']}"
         tech = self.h.incident(inc["machineId"])["assignedTech"]
-        status, out = call(
-            self.api, self.h, self.sfn, "POST", path, role="TECHNICIAN", tech=tech, body={"action": action}
+        claims = as_user(self.h.table, "TECHNICIAN", tech=tech)
+        seen = self.api.route(req("GET", path, claims), self.h.table, self.sfn, NOW)  # the web reads the ETag
+        assert seen["statusCode"] == 200 and seen["headers"]["ETag"]
+        assert_shape(json.loads(seen["body"]), "Incident")
+        posted = self.api.route(
+            req("POST", path + "/ack", claims, body={"action": action}, headers={"if-match": seen["headers"]["ETag"]}),
+            self.h.table,
+            self.sfn,
+            NOW,
         )
+        status, out = posted["statusCode"], json.loads(posted["body"])
         self.responses.append((status, out))
         assert status == 200, out
         sent = self.sfn.of("send_task_success")[-1]

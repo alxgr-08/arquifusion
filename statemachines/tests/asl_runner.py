@@ -17,6 +17,13 @@ _PATH_PART = re.compile(r"\.([A-Za-z0-9_\-]+)|\[(\d+)\]")
 
 
 _EXECUTIONS = itertools.count(1)
+_ENTRIES = itertools.count(1)
+
+
+def _entered_time() -> str:
+    """$$.State.EnteredTime: strictly increasing, same format as Step Functions (ms precision, UTC)."""
+    n = next(_ENTRIES)
+    return f"2026-11-13T{n // 3600000 % 24:02d}:{n // 60000 % 60:02d}:{n // 1000 % 60:02d}.{n % 1000:03d}Z"
 
 
 class Paused(Exception):
@@ -134,6 +141,7 @@ class Runner:
         for _ in range(1000):
             state = machine["States"][name]
             self.visited.append(name)
+            ctx = {**ctx, "State": {"Name": name, "EnteredTime": _entered_time(), "RetryCount": 0}}
             try:
                 data, nxt = self._step(name, state, data, ctx)
             except StatesError as err:

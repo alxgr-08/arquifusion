@@ -1,63 +1,83 @@
 # Ensayo en AWS Academy · flujo de incidentes (Rol 2)
 
-Un solo caso en vuelo, con una operación, una zona, una máquina y un técnico exclusivos de prueba
-(`MINA-ENSAYO`, `ZE`, `EXC-E001`, `T-E1`). Nada de esto aparece en el simulador ni en el offline-detector
-(que solo recorre `MINA-NORTE`). `services/api/tests/test_ensayo_lab.py` ejecuta estos mismos archivos contra
-la Step Function, las Lambdas reales y la API invocada directamente.
-
-| Archivo | Para qué |
-|---|---|
-| `item-machine.json`, `item-technician.json` | Perfiles exclusivos (formato DynamoDB JSON) |
-| `item-stock-caso2.json` | Solo caso 2: 1 rodamiento en un almacén exclusivo `WH-ENSAYO` |
-| `incident-settings-lab.json` | `/af/incident/settings` con esperas cortas y `partsFromOtherWarehouses: false` |
-| `anomaly-caso1-vibracion.json` | Caso 1: `WARNING` solo por vibración → `DRIVETRAIN`, sin repuesto: reserva con cero piezas |
-| `anomaly-caso2-rodamiento.json` | Caso 2: vibración + temperatura → `BEARING` → `BRG-SPH-22` de `WH-ENSAYO` |
-| `item-grant-operador.json` | Permiso `MAINT_LEAD` en `MINA-ENSAYO` para la identidad del operador del ensayo |
-| `api-ack-arrived.json`, `api-ack-resolved.json` | Evento para invocar `af-dev-api` directo (sin API Gateway), con esa identidad |
-
-El token de tarea nunca sale de DynamoDB: la API lo lee y llama a `SendTaskSuccess`. No usar
-`aws stepfunctions send-task-success` a mano (habría que copiar el token y se saltaría el timeline).
-
-## Pasos (caso 1)
+Un solo caso en vuelo, regla `af-dev-incident` **deshabilitada**, sin tocar parámetros SSM compartidos.
+Cada corrida tiene sus propios identificadores, generados por `scripts/ensayo_kit.py`:
 
 ```bash
-T=af-dev-arquifusion
-# 0. Respaldo de la configuración que se va a tocar
-aws ssm get-parameter --name /af/incident/settings --query Parameter.Value --output text > settings-backup.json
-# 1. Perfiles y configuración del ensayo
-aws dynamodb put-item --table-name $T --item file://item-machine.json
-aws dynamodb put-item --table-name $T --item file://item-technician.json
-aws dynamodb put-item --table-name $T --item file://item-grant-operador.json
-aws ssm put-parameter --name /af/incident/settings --type String --overwrite --value file://incident-settings-lab.json
-# 2. Ejecución directa (sin la regla de EventBridge)
-aws stepfunctions start-execution --state-machine-arn <arn af-dev-incident> --name ensayo-caso1-01 \
-  --input file://anomaly-caso1-vibracion.json
-# 3. ID del incidente (sin token)
-aws dynamodb get-item --table-name $T --key '{"PK":{"S":"MACHINE#EXC-E001"},"SK":{"S":"PROFILE"}}' \
-  --projection-expression openIncidentId
-# 4. Reemplazar INC-XXXX por ese ID en los dos api-ack-*.json y confirmar llegada y resolución
-aws lambda invoke --function-name af-dev-api --cli-binary-format raw-in-base64-out \
-  --payload file://api-ack-arrived.json out-arrived.json
-aws lambda invoke --function-name af-dev-api --cli-binary-format raw-in-base64-out \
-  --payload file://api-ack-resolved.json out-resolved.json
-# 5. Verificar: ejecución SUCCEEDED, incidente RESOLVED, máquina sin openIncidentId, técnico AVAILABLE con queue 0
-aws stepfunctions describe-execution --execution-arn <arn de la ejecución> --query status
+python scripts/ensayo_kit.py --run 7 --out ensayo-0007
 ```
 
-`out-*.json` debe tener `statusCode` 200 y `state` `IN_PROGRESS` / `RESOLVED`. Si da 409 `WRONG_STAGE`, la
-ejecución todavía no llegó a esa espera: esperar unos segundos y repetir.
+| Dato de la corrida 7 | Valor |
+|---|---|
+| Operación / zona | `ENSAYO-0007` / `ZE` |
+| Máquina / técnico | `ENS-0007` / `T-E0007` (especialidades `DRIVETRAIN`, `BEARING`) |
+| Almacén (caso 2) | `WH-E0007` |
+| Permiso del operador | `GRANT#accounts.google.com#ensayo-operador-0007` / `OP#ENSAYO-0007`, rol `MAINT_LEAD` |
+| Ajustes de la corrida | `OP#ENSAYO-0007` / `INCIDENT_SETTINGS`: esperas 600 s / 1800 s, 2 intentos de asignación, `partsFromOtherWarehouses: false`, `zoneWarehouses: {"ZE": ["WH-E0007"]}` |
 
-## Caso 2 (descuento real de stock)
+Los ajustes y el almacén de la zona viven en una fila propia de la corrida (el claim la combina con
+`/af/incident/settings`), así que no se sobrescribe `/af/incident/settings` ni el catálogo
+(`AF_INCIDENT_CATALOG=/af/incident/fleet-catalog` o `/af/sim/fleet-config`). `run.json` lista las filas de la corrida.
+`time`/`detectedAt` se generan al preparar la corrida (UTC, ahora) y se conservan si se reenvía el mismo archivo.
 
-Agregar a `/af/sim/fleet-config` (respaldar antes) el almacén `"WH-ENSAYO": {"zones": ["ZE"]}` dentro de
-`warehouses`, cargar `item-stock-caso2.json` y repetir con `anomaly-caso2-rodamiento.json` y otro `--name`.
-Resultado esperado: `partsReserved` = `BRG-SPH-22` de `WH-ENSAYO`, stock de ese ítem en 0, una fila `MAINT#`.
-Con `partsFromOtherWarehouses: false` el flujo nunca toma piezas de `WH-NORTE` ni `WH-SUR`.
+`services/api/tests/test_ensayo_lab.py` corre exactamente estos archivos contra la Step Function, las Lambdas
+reales y la API invocada directamente: caso 1 llega a `RESOLVED` sin piezas, el reenvío del mismo evento no abre
+un segundo incidente; caso 2 consume 1 unidad solo de `WH-E0007`; stocks compartidos y parámetros SSM intactos.
 
-## Limpieza
+## Caso 1 (vibración, cero piezas)
 
-Restaurar `/af/incident/settings` (y `/af/sim/fleet-config` si se usó el caso 2) con los respaldos y borrar las
-filas `MACHINE#EXC-E001` (PROFILE, INCIDENT#…, MAINT#…), `TECH#T-E1`, `GRANT#accounts.google.com#ensayo-operador` y `PART#BRG-SPH-22` / `STOCK#WH-ENSAYO`.
-Si una ejecución queda colgada en una espera, detenerla con `aws stepfunctions stop-execution` y borrar
-`openIncidentId`/`openIncidentExecution` del perfil de la máquina (o volver a cargar `item-machine.json` e
-`item-technician.json`, que también deja al técnico libre).
+```bash
+T=af-dev-arquifusion; cd ensayo-0007
+# 1. Filas de la corrida, solo si no existen (nunca sobrescriben)
+for f in item-op-settings item-machine item-technician item-grant-operador; do
+  aws dynamodb put-item --table-name $T --item file://$f.json --condition-expression "attribute_not_exists(PK)"
+done
+# 2. Ejecución (directa o por af-dev-incident-entry); anotar ambos executionArn por separado
+aws stepfunctions start-execution --state-machine-arn <arn> --name ensayo-0007-caso1 \
+  --input file://anomaly-caso1-vibracion.json
+# 3. ID del incidente (sin token)
+aws dynamodb get-item --table-name $T --key '{"PK":{"S":"MACHINE#ENS-0007"},"SK":{"S":"PROFILE"}}' \
+  --projection-expression openIncidentId
+# 4. Versión de la espera: en api-get-incident.json reemplazar INC-XXXX; la respuesta trae el header ETag
+aws lambda invoke --function-name af-dev-api-ack --cli-binary-format raw-in-base64-out \
+  --payload file://api-get-incident.json out-get.json
+# 5. En api-ack-arrived.json reemplazar INC-XXXX y ETAG-XXXX (sin comillas extra) y confirmar
+aws lambda invoke --function-name af-dev-api-ack --cli-binary-format raw-in-base64-out \
+  --payload file://api-ack-arrived.json out-arrived.json
+# 6. Repetir 4 (nuevo ETag: ahora espera RESOLUTION) y 5 con api-ack-resolved.json
+```
+
+Respuestas: 200 = confirmado. 503 `CALLBACK_PENDING` = repetir **el mismo** archivo. 412 `STALE_WAIT` = la espera
+cambió: volver al paso 4. 409 `WRONG_STAGE` = la ejecución aún no llegó a esa espera: esperar y volver al paso 4.
+
+La invocación directa prueba la lógica, no el login: en AWS solo API Gateway llena `authorizer.jwt.claims`. El
+ensayo de Google Sign-In usa la web en `VITE_API_MODE=live`, un ID token real y API Gateway, con un permiso cargado
+con `scripts/seed_grants.py` para el `sub` real.
+
+Evidencia a registrar por separado: estado de la ejecución de entrada y de `af-dev-incident`; fila del incidente
+(`timeline` DETECTED, ASSIGNED, ARRIVED, RESOLVED; `certified`); recibos `ACK#…`; una publicación SNS (`MessageId`)
+y, aparte, la notificación recibida por una persona.
+
+## Reenvío del mismo evento
+
+Con la regla apagada, volver a iniciar una ejecución con el **mismo** `anomaly-caso1-vibracion.json` (otro `--name`).
+Esperado: termina en `DuplicateIgnored` y no hay un segundo `INCIDENT#` para `ENS-0007`.
+
+## Caso 2 (descuento real)
+
+```bash
+aws dynamodb put-item --table-name $T --item file://item-stock-caso2.json --condition-expression "attribute_not_exists(PK)"
+aws stepfunctions start-execution --state-machine-arn <arn> --name ensayo-0007-caso2 \
+  --input file://anomaly-caso2-rodamiento.json
+```
+
+Mismos pasos 3 a 6. Esperado: `partsReserved` = `BRG-SPH-22` de `WH-E0007`; ese stock queda `qty 0`, `available 0`,
+`reserved 0`; una sola fila `MAINT#`; los almacenes compartidos sin cambios.
+
+## Interrupciones
+
+- Ejecución colgada en una espera: `aws stepfunctions stop-execution`. La máquina queda con `openIncidentId`; para la
+  siguiente prueba usar **otra corrida** (`--run 8`) en vez de editar o borrar filas existentes.
+- `CloseIncident` interrumpido: si Step Functions lo reintenta (aunque sea otro día) termina lo que falte (libera
+  máquina y técnico, una fila `MAINT#`, un consumo de stock).
+- Al terminar no se borra historial: las filas quedan identificadas por `run` / prefijos de la corrida (`run.json`).

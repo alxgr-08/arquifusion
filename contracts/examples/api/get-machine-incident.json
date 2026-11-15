@@ -1,0 +1,70 @@
+{
+  "incidentId": "INC-d040",
+  "machineId": "EXC-0042",
+  "operationId": "MINA-NORTE",
+  "zoneId": "Z3",
+  "severity": "WARNING",
+  "createdAt": "2026-11-13T14:06:20Z",
+  "healthScore": 38,
+  "aiDiagnosis": {
+    "source": "RULES",
+    "probableCause": "Probable desgaste de rodamiento: temperatura y vibración suben juntas. Reincidencia: 1 incidente(s) previo(s) reciente(s).",
+    "component": "BEARING",
+    "confidence": "HIGH",
+    "recommendedAction": "Inspeccionar rodamientos y lubricación; reemplazar si hay holgura o ruido.",
+    "stopMachine": false,
+    "estimatedRepairMinutes": 120
+  },
+  "messages": {
+    "OPERATOR": "Continúa operando EXC-0042 con precaución y reduce la carga; un técnico revisará pronto.",
+    "TECHNICIAN": "EXC-0042 (Z3): Probable desgaste de rodamiento: temperatura y vibración suben juntas. Reincidencia: 1 incidente(s) previo(s) reciente(s). Lecturas: temperatura 92.4 (normal 78.1), vibración 7.8 (normal 4.2), consumo de combustible 38.2 (normal 31). Acción: Inspeccionar rodamientos y lubricación; reemplazar si hay holgura o ruido.",
+    "MAINT_LEAD": "Incidente WARNING en EXC-0042 (Z3), salud 38/100. Componente: BEARING. Reparación estimada 120 min.",
+    "SUPERVISOR": "EXC-0042 operando con restricción en Z3.",
+    "MANAGER": "MINA-NORTE: incidente WARNING en EXC-0042; impacto estimado 120 min de inactividad."
+  },
+  "assignedTech": "T-07",
+  "etaMinutes": 1,
+  "state": "ASSIGNED",
+  "signals": [
+    {
+      "metric": "temperatureC",
+      "value": 92.4,
+      "baseline": 78.1,
+      "zScore": 3.1,
+      "trend": "RISING"
+    },
+    {
+      "metric": "vibrationMmS",
+      "value": 7.8,
+      "baseline": 4.2,
+      "zScore": 2.6,
+      "trend": "RISING"
+    },
+    {
+      "metric": "fuelRateLph",
+      "value": 38.2,
+      "baseline": 31,
+      "zScore": 1.9,
+      "trend": "STABLE"
+    }
+  ],
+  "partsReserved": [
+    {
+      "partId": "BRG-SPH-22",
+      "warehouse": "WH-NORTE",
+      "qty": 1
+    }
+  ],
+  "timeline": [
+    {
+      "at": "2026-11-13T14:06:10Z",
+      "event": "DETECTED"
+    },
+    {
+      "at": "2026-11-13T14:06:50Z",
+      "event": "ASSIGNED",
+      "tech": "T-07"
+    }
+  ],
+  "correlatedIncidents": []
+}

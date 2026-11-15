@@ -17,3 +17,6 @@
 | 2026-11-15 | Setting `partsFromOtherWarehouses` (default true) | Lab rehearsal with an isolated warehouse must never take shared stock |
 | 2026-11-15 | Claim keeps `lastIncidentDetectedAt`; an older or equal `detectedAt` with no open incident is ignored | The health-evaluator outbox (#44) may re-publish an alert whose incident was already handled |
 | 2026-11-15 | Login with Google (API Gateway JWT authorizer), roles in DynamoDB `GRANT#{iss}#{sub}` / `OP#{op}`; no Cognito | Team decision (#42); a role per operation, revocable and re-checked in the same transaction as the ack |
+| 2026-11-15 | `/ack` v1.2: wait version (`waitGeneration`, ETag/If-Match), receipt `ACK#{incId}#{stage}#{gen}`, workflow certifies ARRIVED/RESOLVED (`CertifyArrival`, `CloseIncident`) | Review of #47: a click must confirm the wait the user saw; the workflow is the single writer and its record is the evidence for lost answers |
+| 2026-11-15 | `close_incident` resumes after an interrupted close (no early return when already closed) | A crash between `#CLOSED` and releasing the claim left the machine busy |
+| 2026-11-15 | Rehearsal settings per operation in DynamoDB (`OP#{op}` / `INCIDENT_SETTINGS`), catalog name from `AF_INCIDENT_CATALOG` | Isolated runs without overwriting shared SSM parameters managed by Terraform |
