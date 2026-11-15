@@ -26,10 +26,15 @@ SELECT
 FROM ML.DETECT_ANOMALIES(MODEL af_ml.fuel_lpt_arima, STRUCT(0.95 AS anomaly_prob_threshold))
 WHERE is_anomaly;
 
-UPDATE af_out.daily_kpis AS k
-SET fuel_anomaly = TRUE
-FROM af_out.fuel_anomalies AS a
-WHERE k.machine_id = a.machine_id AND k.date = a.date;
+-- Rebuilt instead of UPDATE: the BigQuery sandbox (no billing) does not allow DML.
+CREATE OR REPLACE TABLE af_out.daily_kpis
+PARTITION BY date
+CLUSTER BY machine_id
+AS
+SELECT k.* REPLACE (k.fuel_anomaly OR a.machine_id IS NOT NULL AS fuel_anomaly)
+FROM af_out.daily_kpis AS k
+LEFT JOIN af_out.fuel_anomalies AS a
+  ON k.machine_id = a.machine_id AND k.date = a.date;
 
 -- Progressive increase: slope of (machine L/t / model L/t) over the last 30 days, in % per week.
 CREATE OR REPLACE TABLE af_out.fuel_trends AS
