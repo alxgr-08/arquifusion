@@ -106,7 +106,7 @@ La tabla es `af-dev-arquifusion`, el bus es `af-dev-bus` y el tópico de desarro
 
 La API está ausente por defecto. El perfil cerrado de incidente contiene 2 rutas, y el conjunto de dashboard añade 10 GET autenticados. La apertura requiere otra opción explícita y un origen autorizado. La tabla es regional y los **29 recursos actuales** del estado de aplicación se conservan, incluidos app y rama Amplify ya creados. La outbox añade datos al procesar futuras alertas y cuenta con mapping optativo inicialmente deshabilitado. El retorno de BigQuery se limita a una operación, máquina y fecha de ensayo. [API](api/README.md) · [Outbox](../../services/health_evaluator/README.md) · [Hosting](../hosting/README.md) · [Retorno](../../services/bigquery_sync_back/README.md)
 
-El alojamiento manual optativo agrega una aplicación Amplify y su rama de demo. La generación del ZIP funciona sin subir archivos. El origen HTTPS que devuelva el servicio sirve para el registro en Google y CORS. [Hosting](../hosting/README.md) · [Planes de este corte](../../docs/informe-final-2026-11-15.md)
+El alojamiento manual optativo agrega una aplicación Amplify y su rama de demo. La generación del ZIP funciona sin subir archivos. El origen HTTPS que devuelva el servicio sirve para el registro en Google y CORS. [Hosting](../hosting/README.md)
 
 ## Corte posterior al ensayo v1.2
 

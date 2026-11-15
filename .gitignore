@@ -48,3 +48,6 @@ Thumbs.db
 
 # Generated data
 analytics/synthetic/out/
+
+# Local assistant notes
+CLAUDE.md

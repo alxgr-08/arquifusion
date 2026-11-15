@@ -1,39 +1,53 @@
 # ArquiFusion Fleet Intelligence
 
-Serverless, multi-cloud platform (AWS + GCP) that turns heavy-machinery telemetry into maintenance, parts, technician, fuel and productivity decisions.
+Plataforma serverless y multinube para flotas de maquinaria pesada. Convierte la telemetría en decisiones de mantenimiento: detecta anomalías, abre el incidente, asigna técnico y repuesto, confirma la llegada y la resolución, y analiza el histórico para anticipar consumo anómalo y demanda de piezas.
 
-## Team
+![Arquitectura](docs/architecture.png)
 
-| Role | Member | Owns |
+[Diagrama editable (Draw.io)](docs/architecture.drawio) · [SVG](docs/architecture.svg) · [Arquitectura por componente](docs/arquitectura.md) · [Web de la demo](https://demo.d2ygcm34t8aku9.amplifyapp.com)
+
+## Dos nubes
+
+| Nube | Qué hace | Servicios |
 |---|---|---|
-| Rol 1 · Cloud architect & infra | Leonardo (`leonardopanduro-rgb`) | `infra/`, security, CI/CD, lake-to-bigquery, stream-exporter, diagram |
-| Rol 2 · Backend & orchestration | Sebastián (`sebastianperez72`) | simulator, fault-injector, offline-detector, `statemachines/`, incident-tasks, assign-technician, notify, api |
-| Rol 3 · Data, AI & product | Alexis (`alxgr-08`) | health-evaluator, ai-diagnosis, `analytics/`, bigquery-sync-back, `frontend/`, pitch |
+| **AWS** (Academy Learner Lab, `us-east-1`) | Opera la flota en tiempo real: evaluación de salud, incidentes, técnicos, stock y web | Lambda (Python 3.12), Step Functions, DynamoDB (PITR, Streams, TTL), EventBridge, SQS (DLQ), SNS, API Gateway HTTP con JWT de Google, Amplify Hosting, SSM Parameter Store, CloudWatch |
+| **Google Cloud** (proyecto `arquifusion`) | Analiza el histórico y entrena los modelos | BigQuery, BigQuery ML (`ARIMA_PLUS`, `KMEANS`), Google Identity Services para el login |
 
-New here? Start with [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+El histórico de BigQuery es sintético (12 máquinas) y está rotulado como tal. El puente AWS ↔ BigQuery (Firehose + Glue → S3 Parquet → BigQuery → KPI de vuelta a DynamoDB) está diseñado e implementado en código ([`lake_to_bigquery`](services/lake_to_bigquery/), [`bigquery_sync_back`](services/bigquery_sync_back/)) y Firehose/Glue se probó en un ensayo temporal, pero el recorrido completo no está desplegado en esta entrega.
 
-## Arquitectura vigente
+## Cómo responde a la rúbrica
 
-AWS Academy opera la telemetría e incidentes. Google Cloud analiza el histórico con BigQuery ML. El simulador direct alimenta el evaluador y el archivo Parquet. La API utiliza Google Sign-In, un JWT authorizer y concesiones por operación en DynamoDB. El recorrido manual de incidentes y la analítica con histórico sintético tienen evidencia independiente.
+| Criterio | Dónde está |
+|---|---|
+| Persistencia y alta disponibilidad | DynamoDB bajo demanda con PITR, Streams y TTL; outbox de alertas; recibos idempotentes con ETag/If-Match ([`infra/aws/dynamodb.tf`](infra/aws/dynamodb.tf)) |
+| Step Functions | Flujo de incidente: correlación, reserva de pieza, diagnóstico, asignación, avisos y dos esperas con callback (llegada y resolución) ([`statemachines/`](statemachines/)) |
+| Dos nubes | AWS para la operación, GCP BigQuery/BigQuery ML para la analítica |
+| Serverless | Solo Lambda, Step Functions, DynamoDB, API Gateway, Amplify y BigQuery; sin servidores ni VPC |
+| IA | BigQuery ML: pronóstico de consumo de combustible y de demanda de repuestos (`ARIMA_PLUS`) y segmentación de la flota (`KMEANS`) ([`analytics/`](analytics/)). Diagnóstico del incidente con Claude en Amazon Bedrock y respaldo por reglas; la demo usa el de reglas ([`services/ai_diagnosis/`](services/ai_diagnosis/)) |
+| Seguridad de variables globales | SSM Parameter Store para la configuración de las Lambdas; sin secretos en código, Terraform ni Vite. Acceso con Google Sign-In, autorizador JWT y permisos por operación y rol en DynamoDB |
 
-La entrega de infraestructura está en `main` mediante #52; #50 se cerró como duplicado. #51 reduce el polling live, #53 corrige el retorno y #54 añade consultas del pitch. La API autorizada creó 31 recursos conservando los 29 anteriores: `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`. La [web live](https://demo.d2ygcm34t8aku9.amplifyapp.com) ya está publicada; los datos de `ENSAYO-0001` y dos grants de participantes están cargados. Faltan el ensayo de login/acuse real y el recorrido entre nubes. Alexis confirmó el origen Google y staging US/24h.
+## Equipo
 
-[Relevo actual de Rol 1 y siguientes pasos](docs/cierre-rol1-2026-11-15.md) · [Arquitectura por componente](docs/arquitectura.md) · [Diagrama editable](docs/architecture.drawio) · [PNG](docs/architecture.png) · [Preparación anterior](docs/rol1-listo-2026-11-15.md) · [Ensayo previo](docs/revision-nocturna-2026-11-15.md)
-
-## Repository layout
-
-| Path | Content | Owner |
+| Rol | Integrante | Responsable de |
 |---|---|---|
-| `contracts/` | JSON Schemas + examples | All (PR approved by 3) |
-| `infra/aws`, `infra/gcp` | Terraform | Rol 1 |
-| `services/` | One folder per Lambda | See each README |
-| `shared/` | Pydantic contract models, shared helpers | All |
-| `statemachines/` | Step Functions ASL | Rol 2 |
-| `analytics/` | BigQuery SQL + BigQuery ML | Rol 3 |
-| `frontend/` | React + Vite + TS | Rol 3 |
-| `docs/` | Architecture, decisions, pitch script | All |
+| Rol 1 · Arquitectura cloud e infraestructura | Leonardo (`leonardopanduro-rgb`) | `infra/`, seguridad, CI/CD, lago de datos, diagrama |
+| Rol 2 · Backend y orquestación | Sebastián (`sebastianperez72`) | simulador, inyector de fallas, `statemachines/`, incidentes, técnicos, avisos, API |
+| Rol 3 · Datos, IA y producto | Alexis (`alxgr-08`) | evaluador de salud, diagnóstico, `analytics/`, retorno de KPIs, `frontend/`, pitch |
 
-## Local setup
+## Estructura
+
+| Ruta | Contenido |
+|---|---|
+| `contracts/` | JSON Schemas, ejemplos y contrato HTTP |
+| `services/` | Una carpeta por Lambda |
+| `statemachines/` | ASL de Step Functions |
+| `shared/` | Modelos Pydantic y utilidades comunes |
+| `analytics/` | SQL de BigQuery y BigQuery ML, histórico sintético y consultas de la demo |
+| `frontend/` | React + Vite + TypeScript |
+| `infra/aws`, `infra/gcp`, `infra/hosting` | Terraform y scripts de despliegue |
+| `docs/` | Arquitectura, decisiones y guion de la demo |
+
+## Ejecutar en local
 
 ```bash
 python -m venv .venv
@@ -41,10 +55,10 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 python scripts/validate_contracts.py
 python scripts/run_tests.py
+
+cd frontend && npm ci && npm run dev   # modo mock por defecto
 ```
 
-## Git workflow
+## Flujo de trabajo
 
-- `main` is protected: no direct pushes. Branches: `feat/rol3-health-score`, `fix/rol2-...`, `infra/rol1-...`.
-- Conventional Commits in English. Small PRs (< 300 lines), 1 review, squash merge.
-- Tag issues with `rol:N` and `P1`–`P13`.
+`main` está protegida: cambios por PR con CI verde (`python`, `frontend`), Conventional Commits en inglés y squash merge. Más detalle en [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
