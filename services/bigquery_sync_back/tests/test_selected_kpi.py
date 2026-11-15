@@ -37,7 +37,7 @@ class Output:
     def query(self, sql, *, job_config, location):
         assert location == "US" and job_config.use_legacy_sql is False
         assert not job_config.destination and "LIMIT 2" in sql
-        assert "COUNTIF(operationId IS NULL OR operationId != @operation_id OR model IS NULL) = 0" in sql
+        assert "COUNTIF(tel.operationId IS NULL OR tel.operationId != @operation_id OR tel.model IS NULL) = 0" in sql
         assert "WHERE k.machine_id = @machine_id AND k.date = @kpi_date" in sql and "JOIN scope" in sql
         assert MACHINE not in sql and OP not in sql
         assert [(p.name, p.type_, p.value) for p in job_config.query_parameters] == [
