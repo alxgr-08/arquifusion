@@ -12,10 +12,10 @@ con la flota de `contracts/examples/fleet-config.json` y las reglas reales de `a
 | `af-dev-simulator` | Scheduler `rate(1 minute)` | 60 s | `AF_INGEST_MODE` (`iot`/`direct`), `AF_IOT_ENDPOINT` opcional, `AF_SIM_RAMP_SECONDS` (300), `AF_SIM_FAST_INTERVAL_SECONDS` (15), plan B: `AF_HEALTH_EVALUATOR_FUNCTION`, `AF_FIREHOSE_STREAM` |
 | `af-dev-fault-injector` | API `POST /simulator/faults` | 10 s | `AF_SIMULATOR_FUNCTION`, `AF_FAULT_GROUPS` opcional |
 | `af-dev-offline-detector` | Scheduler `rate(5 minutes)` | 30 s | `AF_TABLE_NAME`, `AF_OPERATIONS`, `AF_OFFLINE_AFTER_MINUTES` |
-| `af-dev-incident-tasks` | Step Functions | 30 s | `AF_TABLE_NAME` |
+| `af-dev-incident-tasks` | Step Functions | 30 s | `AF_TABLE_NAME`, `AF_INCIDENT_CATALOG` (opcional, p. ej. `/af/incident/fleet-catalog`; si falta usa `/af/sim/fleet-config`) |
 | `af-dev-assign-technician` | Step Functions | 30 s | `AF_TABLE_NAME`, `AF_ROUTE_CALCULATOR` opcional |
 | `af-dev-notify` | Step Functions | 30 s | `AF_TABLE_NAME` |
-| `af-dev-api` | API Gateway (todas las rutas menos `/simulator/faults`) | 15 s | `AF_TABLE_NAME`, `AF_OPERATION_ID` (MINA-NORTE, para `GET /parts`) |
+| `af-dev-api` (hoy `af-dev-api-ack`, handler `handler.handler`) | API Gateway (todas las rutas menos `/simulator/faults`) | 15 s | `AF_TABLE_NAME`, `AF_OPERATION_ID` (MINA-NORTE, para `GET /parts`). Empaquetado y permisos: `services/api/README.md` |
 
 Login (decisión #42, sin Cognito): el autorizador JWT del HTTP API usa issuer `https://accounts.google.com` y
 audience = Client ID de OAuth de GCP. Los roles se cargan en DynamoDB con `scripts/seed_grants.py` (el `sub` de cada

@@ -45,7 +45,8 @@ def test_happy_path_detect_assign_notify_resolve() -> None:
     assert inc["partsReserved"] == [{"partId": "BRG-SPH-22", "warehouse": "WH-NORTE", "qty": 1}]  # WH-NORTE serves Z3
     assert inc["assignedTech"] == "T-07"  # BEARING specialist and closest to Z3
     assert 110 <= inc["downtimeMinutes"] <= 125
-    assert [e["event"] for e in inc["timeline"]] == ["DETECTED", "ASSIGNED"]  # ARRIVED/RESOLVED come from the API
+    # ARRIVED/RESOLVED are written once by the workflow (CertifyArrival, CloseIncident), not by the API
+    assert [e["event"] for e in inc["timeline"]] == ["DETECTED", "ASSIGNED", "ARRIVED", "RESOLVED"]
     assert {e["event"] for e in inc["activity"]} >= {"DIAGNOSED", "PARTS_RESERVED", "NOTIFIED", "CLOSED"}
 
     stock = h.table.get("PART#BRG-SPH-22", "STOCK#WH-NORTE")

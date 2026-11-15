@@ -41,6 +41,8 @@ def dispatch(action: str, event: dict[str, Any], table: Any, store: config.Param
             return incidents.reserve_parts(table, event, incidents._fleet(store), now)
         case "store_task_token":
             return incidents.store_task_token(table, event, now)
+        case "certify_ack":
+            return incidents.certify_ack(table, event, now)
         case "close_incident":
             return incidents.close_incident(table, event, now, store)
         case "update_machine_state":

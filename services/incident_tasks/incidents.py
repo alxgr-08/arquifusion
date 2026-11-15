@@ -42,6 +42,20 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}-{secrets.token_hex(2)}"
 
 
+def _operation_settings(table: Any, operation_id: str, settings: dict[str, Any]) -> dict[str, Any]:
+    """Shared settings (SSM) + optional per-operation overrides kept in DynamoDB, OP#{op} / INCIDENT_SETTINGS:
+    {"settings": {...}, "zoneWarehouses": {"ZE": ["WH-E0001"]}}. Lets an isolated operation (lab rehearsal)
+    change timeouts and which warehouses serve its zones without touching shared parameters."""
+    row = table.get_item(Key={"PK": f"OP#{operation_id}", "SK": "INCIDENT_SETTINGS"}).get("Item")
+    if not row:
+        return settings
+    row = from_ddb(row)
+    merged = {**settings, **(row.get("settings") or {})}
+    if row.get("zoneWarehouses"):
+        merged["zoneWarehouses"] = row["zoneWarehouses"]
+    return merged
+
+
 def _id_for_execution(execution_id: str) -> str:
     return f"INC-{hashlib.sha256(execution_id.encode()).hexdigest()[:4]}"
 
@@ -55,9 +69,12 @@ def _incident_key(machine_id: str, incident_sk: str) -> dict[str, str]:
 
 
 def _fleet(store: Any) -> FleetConfig:
+    """Fleet catalog: AF_INCIDENT_CATALOG (Rol 1: /af/incident/fleet-catalog) or the simulator's fleet-config."""
+    import os
+
     from af_shared import config
 
-    return FleetConfig.model_validate(store.get_json(config.FLEET_CONFIG))
+    return FleetConfig.model_validate(store.get_json(os.environ.get("AF_INCIDENT_CATALOG") or config.FLEET_CONFIG))
 
 
 def _ignore_conditional(fn: Any, **kwargs: Any) -> bool:
@@ -85,6 +102,7 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
     if d.severity not in ("WARNING", "CRITICAL"):
         raise TaskError(f"Severity {d.severity} does not open incidents")
 
+    settings = _operation_settings(table, d.operation_id, settings)
     execution = payload.get("executionId")  # $$.Execution.Id: stable across Lambda/Step Functions retries
     incident_id = _id_for_execution(execution) if execution else _new_id("INC")
     incident_sk = keys.incident_sk(now, incident_id)
@@ -189,7 +207,8 @@ def release_claim(table: Any, payload: dict[str, Any], now: str) -> dict[str, An
     _ignore_conditional(
         table.update_item,
         Key=_incident_key(inc["machineId"], inc["incidentSK"]),
-        UpdateExpression="SET flowFailed = :t, GSI1PK = :closed, activity = list_append(activity, :ev)",
+        UpdateExpression="SET flowFailed = :t, GSI1PK = :closed, activity = list_append(activity, :ev) "
+        "REMOVE taskToken, pendingStage, waitGeneration",
         ConditionExpression="attribute_exists(PK)",
         ExpressionAttributeValues={
             ":t": True,
@@ -572,9 +591,16 @@ def reserve_parts(table: Any, payload: dict[str, Any], fleet: FleetConfig, now: 
     inc = payload["incident"]
     component = payload["created"]["diagnosis"]["diagnosis"]["component"]
     wanted = [{"partId": p.part_id, "qty": 1} for p in fleet.parts_for_component(component)][:1]
-    warehouses = fleet.warehouses_for_zone(inc["zoneId"])
-    if not (inc.get("settings") or {}).get("partsFromOtherWarehouses", True):
-        warehouses = [w for w, wh in fleet.warehouses.items() if inc["zoneId"] in wh.zones]
+    settings = inc.get("settings") or {}
+    own = (settings.get("zoneWarehouses") or {}).get(inc["zoneId"])
+    if own is not None:  # per-operation override (isolated runs)
+        warehouses = list(own)
+        if settings.get("partsFromOtherWarehouses", True):
+            warehouses += [w for w in fleet.warehouses_for_zone(inc["zoneId"]) if w not in warehouses]
+    else:
+        warehouses = fleet.warehouses_for_zone(inc["zoneId"])
+        if not settings.get("partsFromOtherWarehouses", True):
+            warehouses = [w for w, wh in fleet.warehouses.items() if inc["zoneId"] in wh.zones]
     reserved, missing = [], []
     for part in wanted:
         done = None
@@ -642,15 +668,97 @@ def _settle_parts(table: Any, incident_id: str, plan: list[dict[str, Any]], now:
 
 
 # ----------------------------------------------------------------------------------------------- waits
+def wait_generation(execution_id: str, stage: str, entered_time: str) -> str:
+    """Public, opaque version of one wait. Same wait (Lambda/Step Functions retry) -> same value; a new wait,
+    a re-armed one or a reassignment re-enters the state -> new EnteredTime -> new value, even for the same tech."""
+    return hashlib.sha256(f"{execution_id}|{stage}|{entered_time}".encode()).hexdigest()[:16]
+
+
 def store_task_token(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
-    """Called by .waitForTaskToken states; POST /ack resumes the execution with SendTaskSuccess."""
+    """Called by .waitForTaskToken states; POST /ack resumes the execution with SendTaskSuccess.
+
+    Stores the wait (token, stage, execution, assigned tech, generation). A late registration of an older wait
+    (smaller EnteredTime) leaves the newer one intact.
+    """
     inc = payload["incident"]
-    table.update_item(
+    stage = payload["stage"]
+    execution, entered = payload.get("executionId"), payload.get("enteredTime")
+    sets = "SET taskToken = :t, pendingStage = :s, pendingSince = :now"
+    values: dict[str, Any] = {":t": payload["taskToken"], ":s": stage, ":now": now}
+    cond = None
+    generation = None
+    if execution and entered:
+        generation = wait_generation(execution, stage, entered)
+        sets += ", waitGeneration = :g, waitExecution = :ex, waitEnteredAt = :en, waitTech = :tech"
+        values.update({":g": generation, ":ex": execution, ":en": entered, ":tech": payload.get("techId") or "-"})
+        cond = "attribute_not_exists(waitEnteredAt) OR waitEnteredAt <= :en"
+    kwargs: dict[str, Any] = {"ConditionExpression": cond} if cond else {}
+    if not _ignore_conditional(
+        table.update_item,
         Key=_incident_key(inc["machineId"], inc["incidentSK"]),
-        UpdateExpression="SET taskToken = :t, pendingStage = :s, pendingSince = :now",
-        ExpressionAttributeValues={":t": payload["taskToken"], ":s": payload["stage"], ":now": now},
+        UpdateExpression=sets,
+        ExpressionAttributeValues=values,
+        **kwargs,
+    ):
+        return {"stored": None, "stale": True}
+    return {"stored": stage, "generation": generation}
+
+
+def certify_ack(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
+    """Workflow side of /ack: the only writer of ARRIVED/RESOLVED in the timeline.
+
+    Records which ack the execution accepted (ackId, generation, execution, actor) as durable evidence that the
+    API uses when SendTaskSuccess answers with an error or the answer was lost. Idempotent per stage.
+    """
+    inc = payload["incident"]
+    stage = payload["stage"]
+    ack = payload.get("ack") or {}
+    action = "ARRIVED" if stage == "ARRIVAL" else "RESOLVED"
+    key = _incident_key(inc["machineId"], inc["incidentSK"])
+    evidence = _clean(
+        {
+            "ackId": ack.get("ackId"),
+            "generation": ack.get("generation"),
+            "executionId": payload.get("executionId") or ack.get("executionId"),
+            "actor": ack.get("actor"),
+            "by": ack.get("by"),
+            "at": ack.get("at") or now,
+            "certifiedAt": now,
+        }
     )
-    return {"stored": payload["stage"]}
+    table.update_item(
+        Key=key,
+        UpdateExpression="SET certified = if_not_exists(certified, :empty)",
+        ConditionExpression="attribute_exists(PK)",
+        ExpressionAttributeValues={":empty": {}},
+    )
+    row = from_ddb(table.get_item(Key=key, ConsistentRead=True).get("Item") or {})
+    event = {"at": evidence["at"], "event": action}
+    if row.get("assignedTech"):
+        event["tech"] = row["assignedTech"]
+    sets = "certified.#stage = :c, timeline = list_append(timeline, :ev)"
+    values: dict[str, Any] = {":c": evidence, ":ev": [event]}
+    if stage == "ARRIVAL":
+        sets += ", #st = :state"
+        values[":state"] = "IN_PROGRESS"
+    first = _ignore_conditional(
+        table.update_item,
+        Key=key,
+        UpdateExpression="SET " + sets,
+        ConditionExpression="attribute_not_exists(certified.#stage)",
+        ExpressionAttributeNames={"#stage": stage, **({"#st": "state"} if stage == "ARRIVAL" else {})},
+        ExpressionAttributeValues=to_ddb(values),
+    )
+    if ack.get("ackId") and ack.get("generation"):
+        _ignore_conditional(  # receipt of the API: accepted by this execution
+            table.update_item,
+            Key={"PK": key["PK"], "SK": f"ACK#{inc['incidentId']}#{stage}#{ack['generation']}"},
+            UpdateExpression="SET #status = :acc, acceptedAt = :now",
+            ConditionExpression="attribute_exists(PK) AND ackId = :id",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":acc": "ACCEPTED", ":now": now, ":id": ack["ackId"]},
+        )
+    return {"certified": stage, "first": first}
 
 
 # ----------------------------------------------------------------------------------------------- close
@@ -681,8 +789,21 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     if not row:
         raise TaskError(f"Incident {inc['incidentId']} not found")
     row = from_ddb(row)
-    if row.get("GSI1PK", "").endswith("#CLOSED"):
-        return {"incidentId": inc["incidentId"], "alreadyClosed": True, "downtimeMinutes": row.get("downtimeMinutes")}
+    # A retry after an interrupted close (even the next day) must finish what is missing, so there is no early
+    # return here: every effect below is idempotent and the claim is only released if it still belongs to us.
+    already_closed = row.get("GSI1PK", "").endswith("#CLOSED") and not row.get("flowFailed")
+    if payload.get("resolution") is not None:
+        certify_ack(
+            table,
+            {
+                "incident": inc,
+                "stage": "RESOLUTION",
+                "ack": payload["resolution"],
+                "executionId": payload.get("executionId"),
+            },
+            now,
+        )
+        row = from_ddb(table.get_item(Key=key, ConsistentRead=True).get("Item") or row)
 
     # Freeze what this close does on the first attempt, so a retry (Lambda or Step Functions) repeats exactly
     # the same work: same date for the MAINT# record, same parts. Then every write below is idempotent.
@@ -760,7 +881,7 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     _ignore_conditional(  # a concurrent retry may have closed it already: keep the first close
         table.update_item,
         Key=key,
-        UpdateExpression="SET " + ", ".join(sets) + " REMOVE taskToken, pendingStage",
+        UpdateExpression="SET " + ", ".join(sets) + " REMOVE taskToken, pendingStage, waitGeneration",
         ConditionExpression="GSI1PK <> :gsi1pk",
         ExpressionAttributeNames={"#st": "state"},
         ExpressionAttributeValues=to_ddb(values),
@@ -772,6 +893,7 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
         clear_simulated_faults(store, inc["machineId"])
     return {
         "incidentId": inc["incidentId"],
+        "alreadyClosed": already_closed,
         "downtimeMinutes": downtime,
         "partsUsed": used,
         "recurrenceOf": recurrence,

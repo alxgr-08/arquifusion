@@ -178,7 +178,7 @@ def release(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
     table.update_item(
         Key={"PK": keys.machine_pk(inc["machineId"]), "SK": inc["incidentSK"]},
         UpdateExpression="SET #st = :s, activity = list_append(activity, :ev) "
-        "REMOVE assignedTech, etaMinutes, taskToken",
+        "REMOVE assignedTech, etaMinutes, taskToken, pendingStage, waitGeneration",
         ExpressionAttributeNames={"#st": "state"},
         ExpressionAttributeValues={
             ":s": "OPEN",

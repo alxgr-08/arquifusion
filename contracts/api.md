@@ -1,4 +1,4 @@
-# API REST (backend -> frontend) · v1.1
+# API REST (backend -> frontend) · v1.2
 
 Base: API Gateway (HTTP API). Auth (v1.1, #42): Google ID token (`Authorization: Bearer <token>`), verified by the
 API Gateway JWT authorizer (issuer `https://accounts.google.com`, audience = OAuth Client ID). The role is not in the
@@ -13,13 +13,14 @@ JSON responses, camelCase fields. Errors: `{ "error": { "code": "...", "message"
 | GET | `/machines/{id}` | `Machine` | P1, P4 | all |
 | GET | `/machines/{id}/readings?from=&to=` | `Reading[]` (default last 24 h) | P1, P8 | all |
 | GET | `/machines/{id}/incidents` | `Incident[]`, newest first | P10 | all |
+| GET | `/machines/{id}/incidents/{incId}` | `Incident` + header `ETag` = version of the wait it is in (v1.2) | P5, P10 | all |
 | GET | `/machines/{id}/maintenance` | `Maintenance[]`, newest first | P2, P10 | all |
 | GET | `/operations/{op}/incidents?state=OPEN\|CLOSED` | `Incident[]`, CRITICAL first | P5, P9, P11 | all |
 | GET | `/operations/{op}/technicians?availability=` | `Technician[]` | P5 | all |
 | GET | `/parts` | `PartStock[]` (stock per warehouse + `forecastNext4Weeks`) | P3 | staff |
 | GET | `/parts/{partId}/stock` | `PartStock` | P3 | staff |
 | GET | `/operations/{op}/kpis?date=YYYY-MM-DD` | `MachineKpi[]` (default yesterday UTC) | P6, P7 | MAINT_LEAD, SUPERVISOR, MANAGER |
-| POST | `/machines/{id}/incidents/{incId}/ack` | `Incident` (updated); resumes the Step Function | P5, P10 | TECHNICIAN, MAINT_LEAD |
+| POST | `/machines/{id}/incidents/{incId}/ack` | `Incident` (updated); resumes the Step Function. Requires `If-Match` (v1.2) | P5, P10 | TECHNICIAN, MAINT_LEAD |
 | POST | `/simulator/faults` | `{faultId, affectedMachines, ...}` (Lambda `af-dev-fault-injector`) | Demo | MAINT_LEAD, SUPERVISOR, MANAGER |
 
 `all` = OPERATOR, TECHNICIAN, MAINT_LEAD, SUPERVISOR, MANAGER. `staff` = all except OPERATOR.
@@ -32,12 +33,31 @@ No token -> 401. No grant -> 403 `NO_GRANT`; other operation -> 403 `OTHER_OPERA
 { "action": "ARRIVED" }
 { "action": "RESOLVED", "partsUsed": [{ "partId": "BRG-SPH-22", "qty": 1 }], "notes": "Rodamiento cambiado" }
 ```
-`partsUsed` and `notes` are optional (default: everything reserved was used). 409 `WRONG_STAGE` if the incident is not
-waiting for that action, 409 `TASK_EXPIRED` if the wait timed out and the incident was reassigned.
-Who: MAINT_LEAD of the incident's operation, or the TECHNICIAN whose grant `techId` is the assigned technician
-(403 `NOT_ASSIGNED` / `NO_TECH_ID`). Grant, version and assignment are re-checked in the same transaction that stores
-the confirmation (403 `GRANT_CHANGED`). Safe to repeat: a repeated click returns 200 without a second callback, and
-503 `CALLBACK_PENDING` means "repeat the same action" (the confirmation is kept and delivered once).
+`partsUsed` and `notes` are optional (default: everything reserved was used). `{ "event": "ARRIVED" }` is still accepted
+as an alias of `action`.
+
+**Which wait (v1.2).** Every wait of the workflow (arrival, resolution, a re-armed resolution, a reassignment, even to
+the same technician) has an opaque version. `GET /machines/{id}/incidents/{incId}` returns it as `ETag: "<version>"`
+(no ETag = not waiting for a confirmation). The web sends it back in `If-Match: "<version>"` with the POST, so the
+click confirms exactly the wait the user saw. `Access-Control-Expose-Headers: ETag, Retry-After`.
+
+**Who.** MAINT_LEAD of the incident's operation, or the TECHNICIAN whose grant `techId` is the assigned technician.
+The operation comes from the stored incident, never from the browser. Grant (role, techId, version), wait and
+assignment are re-checked in the same transaction that stores the confirmation receipt. The receipt keeps the real
+actor (also when a lead confirms for the technician).
+
+| Status | Code | Meaning | What the web does |
+|---|---|---|---|
+| 200 | — | Confirmed: this ack was delivered/accepted (also for a repeated identical request) | Show the returned `Incident` |
+| 401 | `UNAUTHORIZED` | No/invalid identity (API Gateway answers 401 itself for a bad or expired token) | Sign in again |
+| 403 | `NO_GRANT`, `OTHER_OPERATION`, `FORBIDDEN`, `NO_TECH_ID`, `NOT_ASSIGNED`, `GRANT_CHANGED` | Not allowed (now) | Show the message; reload |
+| 428 | `PRECONDITION_REQUIRED` | Missing `If-Match` | Read the incident first (GET) |
+| 412 | `STALE_WAIT` | The wait changed since the user saw it (response carries the current `ETag`) | Reload and ask the user again |
+| 409 | `WRONG_STAGE`, `TASK_EXPIRED`, `ACK_CONFLICT`, `ACK_BY_OTHER`, `WAIT_NEEDS_RECONCILIATION` | Not waiting for that action / the wait ended without this ack / same wait already confirmed with other parts-notes or by another user / a wait stored before v1.2 | Reload; do not retry |
+| 503 | `CALLBACK_PENDING` (+ `Retry-After`) | Stored, effect not confirmed yet | Repeat **the same** request (same `If-Match` and body) |
+
+A 200 always corresponds to a confirmed effect of that ack. ARRIVED/RESOLVED are written to `timeline` by the workflow
+(once per stage); the 200 already shows the confirmed state.
 
 `POST /simulator/faults`
 ```json
