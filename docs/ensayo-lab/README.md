@@ -1,5 +1,7 @@
 # Ensayo en AWS Academy · flujo de incidentes (Rol 2)
 
+Para la grabación de Canvas se usa la corrida **ya preparada** de `ENS-0001`. Los ejemplos de siembra e invocación directa de esta guía pertenecen a corridas independientes. El técnico hace los acuses por HTTPS en la web. La TA excluyó la ingesta con Lambda y advirtió que alcanzar diez ejecuciones simultáneas pone en riesgo la cuenta compartida. La prueba web parte de un solo evento manual de incidente. [Alcance vigente y responsables](../arquitectura.md#cierre-para-canvas)
+
 Un solo caso en vuelo, regla `af-dev-incident` **deshabilitada**, sin tocar parámetros SSM compartidos.
 Cada corrida tiene sus propios identificadores, generados por `scripts/ensayo_kit.py`:
 

@@ -1,5 +1,7 @@
 # Web live y autenticación · checklist verificado el 15/11/2026
 
+Este documento conserva los pasos y observaciones de la publicación inicial. Al cierre de las 17:51 de Lima, Amplify ya servía la segunda publicación y Sebastián había confirmado el acceso como técnico. El acuse HTTPS de `ENS-0001` sigue pendiente. El equipo excluyó el puente permanente de esta entrega. Para los límites de Academy, el estado de los participantes y la prueba que falta, consultar la [arquitectura vigente](arquitectura.md).
+
 ## Qué está disponible
 
 AWS Academy Learner Lab, perfil `default`, región `us-east-1`. El frontend live está publicado en la aplicación `d2ygcm34t8aku9`, rama manual `demo`, y origen `https://demo.d2ygcm34t8aku9.amplifyapp.com`. La aplicación comparte cuenta con otros proyectos y el curso limita la cuenta a diez entornos Lambda concurrentes. El ensayo será de un usuario y un incidente sintético. EventBridge debe permanecer `DISABLED`.
