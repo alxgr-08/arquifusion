@@ -15,7 +15,7 @@ from zipfile import ZipFile, ZipInfo
 HERE = Path(__file__).resolve().parent
 PUBLIC = Path("frontend/dist")
 VITE_SETTINGS = {"VITE_API_MODE", "VITE_API_URL", "VITE_GOOGLE_CLIENT_ID", "VITE_OPERATION_ID", "VITE_MAP_STYLE_URL"}
-ASSET = re.compile(r"[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.(js|css|woff2?|png|jpe?g|gif|webp|avif|svg|ico|wasm)")
+ASSET = re.compile(r"[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.(js|mjs|css|woff2?|png|jpe?g|gif|webp|avif|svg|ico|wasm)")
 
 
 def check_env() -> None:
