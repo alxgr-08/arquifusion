@@ -4,6 +4,8 @@ Arquitectura vigente y evidencias por entorno: [ArquiFusion](../../docs/arquitec
 
 AWS Academy Learner Lab, perfil `default`, región `us-east-1`. El estado de la aplicación, el bootstrap y los archivos de datos tienen ciclos de vida separados.
 
+**Corte actual:** 60 recursos tras la API autorizada; hosting live, kit `ENSAYO-0001` y dos grants ya disponibles. EventBridge sigue DISABLED y el bootstrap conserva sus hashes. Los planes antiguos contra 27/29 recursos son históricos. Conservar API y hosting al planificar de nuevo y revisar el [relevo del cierre](../../docs/cierre-rol1-2026-11-15.md) antes de ejecutar los procedimientos iniciales de esta guía.
+
 ## Preparación del primer despliegue
 
 La auditoría de solo lectura y el plan de integración están en

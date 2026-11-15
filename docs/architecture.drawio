@@ -50,7 +50,7 @@
         <mxCell id="item-16" parent="1" vertex="1" value="Atención del incidente" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=23;fontColor=#16324b;fontStyle=1;">
           <mxGeometry x="50" y="363" width="1740" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="item-17" parent="1" vertex="1" value="La entrada inicia la máquina hija. La API presenta el callback de cada espera. El flujo certifica la llegada y el cierre." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
+        <mxCell id="item-17" parent="1" vertex="1" value="El ensayo manual llegó al cierre; el callback por HTTPS con una identidad Google válida continúa pendiente." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
           <mxGeometry x="50" y="396" width="1740" height="23" as="geometry" />
         </mxCell>
         <mxCell id="node-6" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Inicio manual · 15/11&lt;/b&gt;&lt;br&gt;Entrada → ejecución hija&lt;br&gt;INC-a8c8 llegó a RESOLVED" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
@@ -140,7 +140,7 @@
         <mxCell id="item-46" parent="1" vertex="1" value="Analítica y retorno Google Cloud → AWS" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=23;fontColor=#16324b;fontStyle=1;">
           <mxGeometry x="50" y="903" width="1740" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="item-47" parent="1" vertex="1" value="Las tablas del equipo y los modelos existen. Falta correlacionar una lectura de AWS con un resultado visible." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
+        <mxCell id="item-47" parent="1" vertex="1" value="Evidencia del equipo: BigQuery y staging US / 24 h confirmados por Alexis. Sin identidad GCP local; recorrido AWS → Google pendiente." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
           <mxGeometry x="50" y="936" width="1740" height="23" as="geometry" />
         </mxCell>
         <mxCell id="node-21" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Histórico sintético&lt;/b&gt;&lt;br&gt;12 máquinas durante 60 días&lt;br&gt;af_lake en US" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
@@ -152,10 +152,10 @@
         <mxCell id="node-23" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Resultados · af_out&lt;/b&gt;&lt;br&gt;9 tablas de salida&lt;br&gt;KPIs, predicciones y señales" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="770" y="967" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-24" parent="1" vertex="1" value="&lt;font color=&quot;#31599b&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;LOCAL&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;bigquery_sync_back&lt;/b&gt;&lt;br&gt;KPI de máquina, operación y día&lt;br&gt;WIF u operador autorizado" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#e6eeff;strokeColor=#31599b;strokeWidth=1.5;">
+        <mxCell id="node-24" parent="1" vertex="1" value="&lt;font color=&quot;#31599b&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;LOCAL&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;bigquery_sync_back&lt;/b&gt;&lt;br&gt;KPI de máquina, operación y día&lt;br&gt;Operador GCP por autorizar" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#e6eeff;strokeColor=#31599b;strokeWidth=1.5;">
           <mxGeometry x="1130" y="967" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-25" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;DynamoDB regional&lt;/b&gt;&lt;br&gt;El ensayo devuelve un solo KPI#&lt;br&gt;BASELINE / FORECAST en modo general" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
+        <mxCell id="node-25" parent="1" vertex="1" value="&lt;font color=&quot;#795584&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;PENDIENTE&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Retorno a DynamoDB&lt;/b&gt;&lt;br&gt;Un KPI# trazable pendiente&lt;br&gt;Tabla regional ya existente" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#f3eafa;strokeColor=#795584;strokeWidth=1.5;">
           <mxGeometry x="1490" y="967" width="309" height="108" as="geometry" />
         </mxCell>
         <mxCell id="relation-53" parent="1" source="node-21" target="node-22" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
@@ -170,31 +170,31 @@
         <mxCell id="relation-56" parent="1" source="node-24" target="node-25" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="item-57" parent="1" vertex="1" value="Acceso web y autorización" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=23;fontColor=#16324b;fontStyle=1;">
+        <mxCell id="item-57" parent="1" vertex="1" value="Web y API desplegadas; ensayo JWT pendiente" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=23;fontColor=#16324b;fontStyle=1;">
           <mxGeometry x="50" y="1104" width="1740" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="item-58" parent="1" vertex="1" value="Hosting sirve la SPA. Google entrega el ID token al navegador. El navegador llama a la API con Bearer y recibe el detalle y ETag." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
+        <mxCell id="item-58" parent="1" vertex="1" value="Web HTTPS 200 y ZIP verificados; 401 sin token e inválido y CORS: PASS. Login Google válido y ACK HTTPS aún pendientes." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
           <mxGeometry x="50" y="1137" width="1740" height="23" as="geometry" />
         </mxCell>
-        <mxCell id="node-26" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;AWS Amplify Hosting&lt;/b&gt;&lt;br&gt;App WEB + rama demo creadas&lt;br&gt;Frontend aún sin publicar" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
+        <mxCell id="node-26" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;AWS Amplify Hosting&lt;/b&gt;&lt;br&gt;Web live publicada · job 1 OK&lt;br&gt;HTTPS 200 y ZIP verificados" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="50" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-27" parent="1" vertex="1" value="&lt;font color=&quot;#31599b&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;LOCAL&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;React + Vite / GIS&lt;/b&gt;&lt;br&gt;Token de Google solo en memoria&lt;br&gt;VITE_API_MODE=live en el ensayo" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#e6eeff;strokeColor=#31599b;strokeWidth=1.5;">
+        <mxCell id="node-27" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;React + Vite / GIS&lt;/b&gt;&lt;br&gt;Origen Google: Alexis confirmó&lt;br&gt;Modo live · login aún pendiente" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="410" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-28" parent="1" vertex="1" value="&lt;font color=&quot;#31599b&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;LOCAL&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;HTTP API Gateway&lt;/b&gt;&lt;br&gt;JWT · emisor Google + audiencia&lt;br&gt;Plan 31 altas · endpoint cerrado" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#e6eeff;strokeColor=#31599b;strokeWidth=1.5;">
+        <mxCell id="node-28" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;HTTP API Gateway&lt;/b&gt;&lt;br&gt;12 rutas JWT · Google · stage dev&lt;br&gt;401 y CORS comprobados" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="770" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-29" parent="1" vertex="1" value="&lt;font color=&quot;#31599b&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;LOCAL&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Lambda API&lt;/b&gt;&lt;br&gt;12 rutas JWT preparadas&lt;br&gt;Control de rol, operación y técnico" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#e6eeff;strokeColor=#31599b;strokeWidth=1.5;">
+        <mxCell id="node-29" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Lambda API&lt;/b&gt;&lt;br&gt;Python 3.12 · LabRole existente&lt;br&gt;Control de rol, operación y técnico" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="1130" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-30" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;DynamoDB / workflow&lt;/b&gt;&lt;br&gt;Concesiones por issuer + subject&lt;br&gt;API → Step Functions para el acuse" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
+        <mxCell id="node-30" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;DynamoDB / workflow&lt;/b&gt;&lt;br&gt;2 grants reales cargados&lt;br&gt;ACK HTTPS aún sin ejecutar" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="1490" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="relation-64" parent="1" source="node-26" target="node-27" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;">
+        <mxCell id="relation-64" parent="1" source="node-26" target="node-27" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="relation-65" parent="1" source="node-27" target="node-28" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;startArrow=block;startFill=1;">
+        <mxCell id="relation-65" parent="1" source="node-27" target="node-28" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="relation-66" parent="1" source="node-28" target="node-29" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;startArrow=block;startFill=1;">
@@ -236,8 +236,11 @@
         <mxCell id="item-78" parent="1" vertex="1" value="Operación del laboratorio" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=21;fontColor=#16324b;fontStyle=1;">
           <mxGeometry x="50" y="1501" width="1740" height="28" as="geometry" />
         </mxCell>
-        <mxCell id="item-79" parent="1" vertex="1" value="29 recursos Terraform · LabRole · S3 privado y bootstrap separado · 5 SSM · 5 grupos Lambda de logs · 3 alarmas · Academy: máximo educativo 10 entornos Lambda" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
-          <mxGeometry x="50" y="1539" width="1740" height="23" as="geometry" />
+        <mxCell id="item-79" parent="1" vertex="1" value="60 recursos Terraform · serial 11 · 6 Lambdas · plan posterior: 0 / 0 / 0 · estado exclusivo S3 · bootstrap intacto · regla EventBridge DISABLED" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
+          <mxGeometry x="50" y="1534" width="1740" height="23" as="geometry" />
+        </mxCell>
+        <mxCell id="item-80" parent="1" vertex="1" value="LabRole existente · 5 SSM · 7 grupos de logs (2 API) · 3 alarmas · AWS Academy: máximo educativo de 10 entornos Lambda concurrentes" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
+          <mxGeometry x="50" y="1559" width="1740" height="23" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

@@ -1,6 +1,9 @@
-# Public review profile only. Apply requires verified project access and a reviewed plan.
+# Public review profile for a state that does not manage the team's existing staging.
+# Alexis confirmed af_bridge_stage already exists in US with a 24-hour table TTL.
+# Keep creation off; do not import/adopt it without coordination and explicit approval.
+# If another state already manages it, reconcile that state before changing its flags.
 project_id            = "arquifusion"
 region                = "us-central1"
 bq_location           = "US"
 env                   = "dev"
-enable_bridge_staging = true
+enable_bridge_staging = false

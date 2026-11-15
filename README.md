@@ -16,7 +16,9 @@ New here? Start with [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
 
 AWS Academy opera la telemetría e incidentes. Google Cloud analiza el histórico con BigQuery ML. El simulador direct alimenta el evaluador y el archivo Parquet. La API utiliza Google Sign-In, un JWT authorizer y concesiones por operación en DynamoDB. El recorrido manual de incidentes y la analítica con histórico sintético tienen evidencia independiente.
 
-[Arquitectura, madurez por componente y ensayo pendiente](docs/arquitectura.md) · [Diagrama editable](docs/architecture.drawio) · [PNG](docs/architecture.png) · [Preparación actual de Rol 1](docs/rol1-listo-2026-11-15.md) · [Ensayo del 15/11](docs/revision-nocturna-2026-11-15.md)
+La entrega de infraestructura está en `main` mediante #52; #50 se cerró como duplicado. #51 reduce el polling live, #53 corrige el retorno y #54 añade consultas del pitch. La API autorizada creó 31 recursos conservando los 29 anteriores: `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`. La [web live](https://demo.d2ygcm34t8aku9.amplifyapp.com) ya está publicada; los datos de `ENSAYO-0001` y dos grants de participantes están cargados. Faltan el ensayo de login/acuse real y el recorrido entre nubes. Alexis confirmó el origen Google y staging US/24h.
+
+[Relevo actual de Rol 1 y siguientes pasos](docs/cierre-rol1-2026-11-15.md) · [Arquitectura por componente](docs/arquitectura.md) · [Diagrama editable](docs/architecture.drawio) · [PNG](docs/architecture.png) · [Preparación anterior](docs/rol1-listo-2026-11-15.md) · [Ensayo previo](docs/revision-nocturna-2026-11-15.md)
 
 ## Repository layout
 
