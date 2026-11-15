@@ -13,3 +13,7 @@
 | 2026-11-14 | Rol 2 adopts Rol 3 contracts: fleet-config.json, ai-diagnosis-*, frontend/src/api/types.ts | One source of truth for the web, the history and the backend |
 | 2026-11-14 | Incident `timeline` only holds the 5 events the web shows; other events go to `activity` | The web labels only DETECTED, ASSIGNED, ARRIVED, RESOLVED, ESCALATED |
 | 2026-11-15 | health-evaluator keeps `pendingAlert` in PROFILE until EventBridge accepts AnomalyDetected | A Lambda retry after a committed reading was skipped as duplicate and the alert was lost |
+| 2026-11-15 | Claim stores `openIncidentExecution` (`$$.Execution.Id`); the incident ID derives from it | A retried claim whose response was lost must continue its own incident, not end as a duplicate and leave the machine blocked |
+| 2026-11-15 | Setting `partsFromOtherWarehouses` (default true) | Lab rehearsal with an isolated warehouse must never take shared stock |
+| 2026-11-15 | Claim keeps `lastIncidentDetectedAt`; an older or equal `detectedAt` with no open incident is ignored | The health-evaluator outbox (#44) may re-publish an alert whose incident was already handled |
+| 2026-11-15 | Login with Google (API Gateway JWT authorizer), roles in DynamoDB `GRANT#{iss}#{sub}` / `OP#{op}`; no Cognito | Team decision (#42); a role per operation, revocable and re-checked in the same transaction as the ack |

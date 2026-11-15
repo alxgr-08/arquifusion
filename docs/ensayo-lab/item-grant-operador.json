@@ -1,0 +1,20 @@
+{
+  "PK": {
+    "S": "GRANT#accounts.google.com#ensayo-operador"
+  },
+  "SK": {
+    "S": "OP#MINA-ENSAYO"
+  },
+  "operationId": {
+    "S": "MINA-ENSAYO"
+  },
+  "role": {
+    "S": "MAINT_LEAD"
+  },
+  "version": {
+    "N": "1"
+  },
+  "label": {
+    "S": "Operador del ensayo (Rol 1)"
+  }
+}

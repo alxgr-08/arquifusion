@@ -1,0 +1,59 @@
+{
+  "PK": {
+    "S": "MACHINE#EXC-E001"
+  },
+  "SK": {
+    "S": "PROFILE"
+  },
+  "GSI1PK": {
+    "S": "OP#MINA-ENSAYO#MACHINE"
+  },
+  "GSI1SK": {
+    "S": "OPERATING#EXC-E001"
+  },
+  "machineId": {
+    "S": "EXC-E001"
+  },
+  "operationId": {
+    "S": "MINA-ENSAYO"
+  },
+  "model": {
+    "S": "EXC-320"
+  },
+  "machineType": {
+    "S": "EXCAVATOR"
+  },
+  "zoneId": {
+    "S": "ZE"
+  },
+  "lat": {
+    "N": "-23.6009"
+  },
+  "lon": {
+    "N": "-69.9775"
+  },
+  "status": {
+    "S": "OPERATING"
+  },
+  "healthScore": {
+    "N": "100"
+  },
+  "severity": {
+    "S": "OK"
+  },
+  "anomalyStreak": {
+    "N": "0"
+  },
+  "engineHours": {
+    "N": "12450.0"
+  },
+  "lastMaintenanceHours": {
+    "N": "12000.0"
+  },
+  "maintenanceIntervalHours": {
+    "N": "500.0"
+  },
+  "nominalLoadTons": {
+    "N": "18.0"
+  }
+}

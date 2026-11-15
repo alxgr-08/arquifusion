@@ -23,6 +23,7 @@ DEFAULT_INCIDENT_SETTINGS: dict[str, Any] = {
     "zoneMinMachines": 3,
     "recurrenceWindowDays": 30,
     "technicianSpeedKmh": 25,
+    "partsFromOtherWarehouses": True,  # False: only the warehouse that serves the zone (isolated lab tests)
 }
 
 

@@ -8,7 +8,8 @@
       "Resource": "${incident_tasks_arn}",
       "Parameters": {
         "action": "claim",
-        "event.$": "$"
+        "event.$": "$",
+        "executionId.$": "$$.Execution.Id"
       },
       "ResultPath": "$.incident",
       "Retry": [

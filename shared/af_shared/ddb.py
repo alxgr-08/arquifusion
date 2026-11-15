@@ -74,3 +74,37 @@ def strip_keys(item: dict[str, Any]) -> dict[str, Any]:
     """Drop storage keys (PK/SK/GSI*) and convert Decimals before returning an item to a client."""
     hidden = {"PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "expiresAt"}
     return from_ddb({k: v for k, v in item.items() if k not in hidden})
+
+
+def transact_write(table: Any, actions: list[dict[str, Any]]) -> None:
+    """TransactWriteItems on `table` with resource-style values (plain Python, like Table.update_item).
+
+    Each action is {"ConditionCheck"|"Update"|"Put"|"Delete": {...}} without TableName. Raises the ClientError
+    `TransactionCanceledException` if any condition fails (see `is_transaction_conditional_failure`).
+    """
+    from boto3.dynamodb.types import TypeSerializer
+
+    ser = TypeSerializer()
+
+    def typed(values: dict[str, Any]) -> dict[str, Any]:
+        return {k: ser.serialize(to_ddb(v)) for k, v in values.items()}
+
+    items = []
+    for action in actions:
+        ((kind, spec),) = action.items()
+        spec = {**spec, "TableName": table.name}
+        for field in ("Key", "Item", "ExpressionAttributeValues"):
+            if field in spec:
+                spec[field] = typed(spec[field])
+        items.append({kind: spec})
+    table.meta.client.transact_write_items(TransactItems=items)
+
+
+def is_transaction_conditional_failure(exc: Exception) -> bool:
+    response = getattr(exc, "response", None) or {}
+    if response.get("Error", {}).get("Code") != "TransactionCanceledException":
+        return False
+    reasons = response.get("CancellationReasons") or []
+    return any(r.get("Code") == "ConditionalCheckFailed" for r in reasons) or (
+        not reasons and "ConditionalCheckFailed" in str(response.get("Error", {}).get("Message", ""))
+    )

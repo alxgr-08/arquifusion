@@ -17,17 +17,24 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from af_shared import config
-from af_shared.ddb import iso, parse_iso
+from af_shared import config, grants
+from af_shared.ddb import get_table, iso, parse_iso
 from af_shared.fleet import FleetConfig
-from af_shared.http import ApiError, error, json_body, require_group, respond
+from af_shared.http import ApiError, error, json_body, respond
 from af_shared.log import get_logger
 from fleet_faults import FAULT_TYPES, ZONE_FAULTS
 
 logger = get_logger("fault-injector")
 _store = config.ParamStore()
 _lambda: Any = None
+_tables: list[Any] = []
 MAX_ACTIVE = 25
+
+
+def _table() -> Any:
+    if not _tables:
+        _tables.append(get_table())
+    return _tables[0]
 
 
 def allowed_groups() -> set[str]:
@@ -107,11 +114,14 @@ def apply(body: dict[str, Any], cfg: FleetConfig, faults: list[dict[str, Any]], 
     }
 
 
-def handle(event: dict[str, Any], store: config.ParamStore, kick: Any = None) -> dict[str, Any]:
+def handle(event: dict[str, Any], store: config.ParamStore, kick: Any = None, table: Any = None) -> dict[str, Any]:
     try:
-        require_group(event, allowed_groups())
-        body = json_body(event)
         cfg = FleetConfig.model_validate(store.get_json(config.FLEET_CONFIG))
+        if os.environ.get("AF_AUTH_DISABLED") != "true":
+            grants.require(
+                grants.load(table if table is not None else _table(), event), allowed_groups(), cfg.operation_id
+            )
+        body = json_body(event)
         current = (store.get_json(config.SIM_FAULTS, default={"faults": []}, fresh=True) or {}).get("faults", [])
         faults, result = apply(body, cfg, current, datetime.now(UTC))
         store.put_json(config.SIM_FAULTS, {"faults": faults})

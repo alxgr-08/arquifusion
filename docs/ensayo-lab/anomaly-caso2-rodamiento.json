@@ -1,0 +1,40 @@
+{
+  "version": "0",
+  "id": "ensayo-1",
+  "source": "arquifusion.health",
+  "detail-type": "AnomalyDetected",
+  "account": "000000000000",
+  "region": "us-east-1",
+  "time": "2026-11-16T16:00:00Z",
+  "resources": [],
+  "detail": {
+    "schemaVersion": "1.0",
+    "machineId": "EXC-E001",
+    "operationId": "MINA-ENSAYO",
+    "zoneId": "ZE",
+    "model": "EXC-320",
+    "detectedAt": "2026-11-16T16:00:00Z",
+    "healthScore": 55,
+    "severity": "WARNING",
+    "signals": [
+      {
+        "metric": "vibrationMmS",
+        "value": 7.8,
+        "baseline": 4.2,
+        "zScore": 3.1,
+        "trend": "RISING"
+      },
+      {
+        "metric": "temperatureC",
+        "value": 92.4,
+        "baseline": 78.1,
+        "zScore": 3.0,
+        "trend": "RISING"
+      }
+    ],
+    "comparedAgainst": [
+      "OWN_HISTORY",
+      "MODEL_FLEET"
+    ]
+  }
+}
