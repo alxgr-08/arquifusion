@@ -1,8 +1,12 @@
-import { Map as MapLibreMap, Marker, NavigationControl, type StyleSpecification } from "maplibre-gl";
+import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef } from "react";
 import type { Machine, Technician } from "../api/types";
 import { SEVERITY_COLOR, STATUS_LABEL } from "../lib/domain";
+
+// The bundle moves maplibre-gl.mjs, so its default worker URL (relative to import.meta.url) 404s.
+setWorkerUrl(workerUrl);
 
 const OSM_STYLE: StyleSpecification = {
   version: 8,

@@ -55,10 +55,17 @@ export function hoursToMaintenance(engineHours: number, lastMaintenanceHours: nu
   return intervalHours / usageFactor - (engineHours - lastMaintenanceHours);
 }
 
-export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+function parseDate(iso: string | undefined): Date | undefined {
+  const date = iso ? new Date(iso) : undefined;
+  return date && !Number.isNaN(date.getTime()) ? date : undefined;
 }
 
-export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+export function formatTime(iso: string | undefined): string {
+  return parseDate(iso)?.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }) ?? "—";
+}
+
+export function formatDateTime(iso: string | undefined): string {
+  return (
+    parseDate(iso)?.toLocaleString("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) ?? "—"
+  );
 }
