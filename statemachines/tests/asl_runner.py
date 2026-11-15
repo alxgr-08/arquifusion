@@ -8,11 +8,15 @@ Not supported on purpose: Retry back-off (errors are raised once), OutputPath/In
 from __future__ import annotations
 
 import copy
+import itertools
 import re
 from collections.abc import Callable
 from typing import Any
 
 _PATH_PART = re.compile(r"\.([A-Za-z0-9_\-]+)|\[(\d+)\]")
+
+
+_EXECUTIONS = itertools.count(1)
 
 
 class Paused(Exception):
@@ -120,8 +124,10 @@ class Runner:
         self.waits: list[dict[str, Any]] = []
         self.tokens = 0
 
-    def run(self, data: Any) -> Any:
-        return self._run_machine(self.definition, data, {"Execution": {"Id": "exec-1"}})
+    def run(self, data: Any, execution_id: str | None = None) -> Any:
+        if execution_id is None:
+            execution_id = f"arn:aws:states:us-east-1:000000000000:execution:af-dev-incident:{next(_EXECUTIONS)}"
+        return self._run_machine(self.definition, data, {"Execution": {"Id": execution_id}})
 
     def _run_machine(self, machine: dict[str, Any], data: Any, ctx: dict[str, Any]) -> Any:
         name = machine["StartAt"]

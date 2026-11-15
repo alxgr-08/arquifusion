@@ -1,0 +1,11 @@
+{
+  "techAckTimeoutSeconds": 600,
+  "resolutionTimeoutSeconds": 1800,
+  "noTechnicianRetrySeconds": 60,
+  "maxAssignAttempts": 2,
+  "zoneWindowMinutes": 120,
+  "zoneMinMachines": 3,
+  "recurrenceWindowDays": 30,
+  "technicianSpeedKmh": 25,
+  "partsFromOtherWarehouses": false
+}

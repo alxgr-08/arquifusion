@@ -9,6 +9,7 @@ web shows (DETECTED, ASSIGNED, ARRIVED, RESOLVED, ESCALATED); everything else go
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from typing import Any
 
@@ -39,6 +40,10 @@ class TaskError(Exception):
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{secrets.token_hex(2)}"
+
+
+def _id_for_execution(execution_id: str) -> str:
+    return f"INC-{hashlib.sha256(execution_id.encode()).hexdigest()[:4]}"
 
 
 def _event(event: str, at: str, **extra: Any) -> list[dict[str, Any]]:
@@ -80,7 +85,8 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
     if d.severity not in ("WARNING", "CRITICAL"):
         raise TaskError(f"Severity {d.severity} does not open incidents")
 
-    incident_id = _new_id("INC")
+    execution = payload.get("executionId")  # $$.Execution.Id: stable across Lambda/Step Functions retries
+    incident_id = _id_for_execution(execution) if execution else _new_id("INC")
     incident_sk = keys.incident_sk(now, incident_id)
     anomaly = event.model_dump(by_alias=True, mode="json")["detail"]
     base = {
@@ -100,16 +106,39 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
     if _ignore_conditional(
         table.update_item,
         Key=keys.machine_profile(d.machine_id),
-        UpdateExpression="SET openIncidentId = :id, openIncidentSK = :sk, openIncidentSeverity = :sev",
-        ConditionExpression="attribute_exists(PK) AND attribute_not_exists(openIncidentId)",
-        ExpressionAttributeValues={":id": incident_id, ":sk": incident_sk, ":sev": d.severity},
+        UpdateExpression="SET openIncidentId = :id, openIncidentSK = :sk, openIncidentSeverity = :sev, "
+        "openIncidentExecution = :ex, lastIncidentDetectedAt = :det",
+        # lastIncidentDetectedAt: an alert re-published by the health-evaluator outbox (pendingAlert) after its
+        # incident was already handled must not open a second incident.
+        ConditionExpression="attribute_exists(PK) AND attribute_not_exists(openIncidentId) "
+        "AND (attribute_not_exists(lastIncidentDetectedAt) OR lastIncidentDetectedAt < :det)",
+        ExpressionAttributeValues={
+            ":id": incident_id,
+            ":sk": incident_sk,
+            ":sev": d.severity,
+            ":ex": execution or "-",
+            ":det": anomaly["detectedAt"],
+        },
     ):
         return {**base, "duplicate": False, "escalated": False}
 
-    profile = table.get_item(Key=keys.machine_profile(d.machine_id)).get("Item")
+    profile = table.get_item(Key=keys.machine_profile(d.machine_id), ConsistentRead=True).get("Item")
     if not profile:
         raise TaskError(f"Unknown machine {d.machine_id}")
+    if "openIncidentId" not in profile:  # replay of an alert that already had its incident
+        return {**base, "duplicate": True, "escalated": False, "replayed": True}
     open_id, open_sk = profile["openIncidentId"], profile["openIncidentSK"]
+    if execution and profile.get("openIncidentExecution") == execution:
+        # Our own claim whose response was lost (retry): keep going with the claimed incident, not a duplicate.
+        created_at = open_sk.split("#")[1]
+        return {
+            **base,
+            "incidentId": open_id,
+            "incidentSK": open_sk,
+            "createdAt": created_at,
+            "duplicate": False,
+            "escalated": False,
+        }
     escalated = SEVERITY_ORDER[d.severity] > SEVERITY_ORDER.get(profile.get("openIncidentSeverity", "WARNING"), 0)
     if escalated:
         _escalate(table, d.machine_id, d.operation_id, open_sk, d.severity, d.health_score, now)
@@ -146,7 +175,7 @@ def release_claim_only(table: Any, inc: dict[str, Any]) -> None:
     _ignore_conditional(
         table.update_item,
         Key=keys.machine_profile(inc["machineId"]),
-        UpdateExpression="REMOVE openIncidentId, openIncidentSK, openIncidentSeverity",
+        UpdateExpression="REMOVE openIncidentId, openIncidentSK, openIncidentSeverity, openIncidentExecution",
         ConditionExpression="openIncidentId = :id",
         ExpressionAttributeValues={":id": inc["incidentId"]},
     )
@@ -544,6 +573,8 @@ def reserve_parts(table: Any, payload: dict[str, Any], fleet: FleetConfig, now: 
     component = payload["created"]["diagnosis"]["diagnosis"]["component"]
     wanted = [{"partId": p.part_id, "qty": 1} for p in fleet.parts_for_component(component)][:1]
     warehouses = fleet.warehouses_for_zone(inc["zoneId"])
+    if not (inc.get("settings") or {}).get("partsFromOtherWarehouses", True):
+        warehouses = [w for w, wh in fleet.warehouses.items() if inc["zoneId"] in wh.zones]
     reserved, missing = [], []
     for part in wanted:
         done = None

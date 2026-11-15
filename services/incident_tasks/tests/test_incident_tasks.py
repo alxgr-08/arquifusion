@@ -36,6 +36,60 @@ def test_claim_rejects_invalid_events_and_unknown_machines() -> None:
         claimed(h, machine_id="XXX-0001")
 
 
+def test_claim_retry_after_lost_response_keeps_the_same_incident() -> None:
+    h = Harness()
+    settings = {"zoneWindowMinutes": 120, "zoneMinMachines": 3}
+    payload = {"event": anomaly_event(), "executionId": "arn:aws:states:::execution:af-dev-incident:run-1"}
+    first = incidents.claim(h.table, payload, NOW, settings)
+    retry = incidents.claim(h.table, payload, "2026-11-13T14:07:09Z", settings)  # response of `first` was lost
+    assert retry["duplicate"] is False
+    assert (retry["incidentId"], retry["incidentSK"], retry["createdAt"]) == (
+        first["incidentId"],
+        first["incidentSK"],
+        first["createdAt"],
+    )
+    other = incidents.claim(h.table, {**payload, "executionId": "arn:...:run-2"}, NOW, settings)
+    assert other["duplicate"] is True and other["incidentId"] == first["incidentId"]
+    incidents.release_claim_only(h.table, first)
+    profile = h.table.get_item(Key={"PK": "MACHINE#EXC-0042", "SK": "PROFILE"})["Item"]
+    assert "openIncidentId" not in profile and "openIncidentExecution" not in profile
+
+
+def test_replayed_alert_after_its_incident_closed_is_ignored() -> None:
+    h = Harness()
+    settings = {"zoneWindowMinutes": 120, "zoneMinMachines": 3}
+    first = claimed(h)
+    incidents.release_claim_only(h.table, first)  # incident handled and machine freed
+    replay = incidents.claim(h.table, {"event": anomaly_event(), "executionId": "arn:...:replay"}, NOW, settings)
+    assert replay["duplicate"] is True and replay.get("replayed") is True
+    later = incidents.claim(
+        h.table,
+        {"event": anomaly_event(detected_at="2026-11-13T18:00:00Z"), "executionId": "arn:...:new"},
+        NOW,
+        settings,
+    )
+    assert later["duplicate"] is False and later["incidentId"] != first["incidentId"]
+
+
+def test_reserve_parts_can_stay_in_the_zone_warehouse() -> None:
+    h = Harness()
+    inc = claimed(h)
+    inc["settings"] = {"partsFromOtherWarehouses": False}
+    payload = created(h, inc)
+    fleet = incidents._fleet(h.store)
+    for wh in fleet.warehouses_for_zone(inc["zoneId"])[:1]:
+        h.table.update_item(
+            Key={"PK": "PART#BRG-SPH-22", "SK": f"STOCK#{wh}"},
+            UpdateExpression="SET available = :z",
+            ExpressionAttributeValues={":z": 0},
+        )
+    before = {k: dict(v) for k, v in h.table.items.items() if k[0].startswith("PART#")}
+    out = incidents.reserve_parts(h.table, payload, fleet, NOW)
+    assert out["reserved"] == [] and out["hasMissing"] is True
+    after = {k: dict(v) for k, v in h.table.items.items() if k[0].startswith("PART#")}
+    assert after == before  # no other warehouse was touched
+
+
 def test_reserve_parts_is_idempotent_on_retry() -> None:
     h = Harness()
     payload = created(h, claimed(h))
