@@ -1,4 +1,4 @@
-"""Review one frozen simulator-direct reading offline. --send dispatches it once per target in Academy."""
+"""Review a frozen reading offline. --send-firehose-only submits one record from this host."""
 
 import argparse
 import hashlib
@@ -19,9 +19,9 @@ sys.path.insert(0, str(ROOT / "shared"))
 
 from af_shared.keys import machine_pk  # noqa: E402
 
-from infra.aws.telemetry.prepare_case import FUNCTION, STREAM, single_fleet, validate_reading  # noqa: E402
+from infra.aws.telemetry.prepare_bucket import ACCOUNT, REGION, TAGS  # noqa: E402
+from infra.aws.telemetry.prepare_case import STREAM, single_fleet, validate_reading  # noqa: E402
 
-REGION = "us-east-1"
 CASES = ROOT / "build" / "telemetry-cases"
 
 
@@ -44,26 +44,13 @@ def check_case(case: Path) -> tuple[dict, bytes, bytes]:
         or record != raw + b"\n"
         or b"\n" in raw
     ):
-        raise ValueError("Both destinations must receive the same single, isolated simulator reading.")
+        raise ValueError("The two frozen files must contain the same single, isolated simulator reading.")
     return message, raw, record
 
 
-def send(case: Path, account: str, session) -> None:
-    if not re.fullmatch(r"[0-9]{12}", account):
-        raise ValueError("Supply the approved 12-digit Academy account.")
-    message, raw, record = check_case(case)
-    journal = case / "dispatch.jsonl"
-    if journal.exists():
-        raise ValueError("A dispatch already started. Reconcile dispatch.jsonl and the messageId before any replay.")
-    options = Config(connect_timeout=5, read_timeout=15, retries={"mode": "standard", "total_max_attempts": 1})
-    if session.client("sts", config=options).get_caller_identity()["Account"] != account:
-        raise ValueError("The active Academy account differs from the approved account.")
-    functions = session.client("lambda", config=options)
-    firehose = session.client("firehose", config=options)
-    arn = f"arn:aws:lambda:{REGION}:{account}:function:{FUNCTION}"
-    tags = functions.list_tags(Resource=arn)["Tags"]
-    if any(tags.get(k) != v for k, v in {"project": "arquifusion", "env": "dev", "owner": "rol1"}.items()):
-        raise ValueError("Unexpected project, environment or owner on the evaluator.")
+def verify_lake(firehose, s3_client, account: str) -> None:
+    bucket = f"af-dev-arquifusion-lake-{account}-{REGION}-an"
+    role = f"arn:aws:iam::{account}:role/LabRole"
     stream = firehose.describe_delivery_stream(DeliveryStreamName=STREAM)["DeliveryStreamDescription"]
     dest = stream.get("Destinations", [])
     s3 = dest[0].get("ExtendedS3DestinationDescription", {}) if len(dest) == 1 else {}
@@ -74,16 +61,57 @@ def send(case: Path, account: str, session) -> None:
         stream.get("DeliveryStreamARN") != f"arn:aws:firehose:{REGION}:{account}:deliverystream/{STREAM}"
         or stream.get("DeliveryStreamStatus") != "ACTIVE"
         or stream.get("DeliveryStreamType") != "DirectPut"
-        or s3.get("BucketARN") != f"arn:aws:s3:::af-dev-arquifusion-lake-{account}-{REGION}-an"
+        or stream.get("HasMoreDestinations")
+        or s3.get("BucketARN") != f"arn:aws:s3:::{bucket}"
+        or s3.get("RoleARN") != role
+        or s3.get("S3BackupMode", "Disabled") != "Disabled"
+        or ("ProcessingConfiguration" in s3 and s3["ProcessingConfiguration"].get("Enabled") is not False)
         or s3.get("Prefix") != "records/"
         or s3.get("ErrorOutputPrefix") != "errors/!{firehose:error-output-type}/"
         or conversion.get("Enabled") is not True
         or schema.get("CatalogId") != account
+        or schema.get("Region") != REGION
+        or schema.get("RoleARN") != role
         or schema.get("DatabaseName") != "af_dev_telemetry"
         or schema.get("TableName") != "telemetry"
         or parquet.get("Compression") != "SNAPPY"
     ):
         raise ValueError("The active Firehose destination does not match the approved regional telemetry lake.")
+    result = firehose.list_tags_for_delivery_stream(DeliveryStreamName=STREAM, Limit=50)
+    stream_tags = {tag["Key"]: tag.get("Value") for tag in result["Tags"]}
+    if result.get("HasMoreTags") or any(stream_tags.get(key) != TAGS[key] for key in ("project", "env", "owner")):
+        raise ValueError("Unexpected ownership tags on the delivery stream.")
+    target = {"Bucket": bucket, "ExpectedBucketOwner": account}
+    bucket_tags = {tag["Key"]: tag["Value"] for tag in s3_client.get_bucket_tagging(**target)["TagSet"]}
+    if not TAGS.items() <= bucket_tags.items():
+        raise ValueError("Unexpected ownership tags on the lake bucket.")
+    notifications = s3_client.get_bucket_notification_configuration(**target)
+    if any(
+        notifications.get(key) for key in ("LambdaFunctionConfigurations", "TopicConfigurations", "QueueConfigurations")
+    ) or ("EventBridgeConfiguration" in notifications):
+        raise ValueError("The dedicated lake must have no downstream notification triggers for this isolated dispatch.")
+
+
+def send_firehose_only(case: Path, account: str, session) -> None:
+    if account != ACCOUNT:
+        raise ValueError("Supply the approved ArquiFusion Academy account.")
+    message, _, record = check_case(case)
+    journal = case / "dispatch.jsonl"
+    if journal.exists():
+        raise ValueError("A dispatch already started. Reconcile dispatch.jsonl and the messageId before any replay.")
+    options = Config(
+        connect_timeout=5,
+        read_timeout=15,
+        ignore_configured_endpoint_urls=True,
+        retries={"mode": "standard", "total_max_attempts": 1},
+    )
+    caller = session.client("sts", config=options).get_caller_identity()
+    if caller.get("Account") != account or not caller.get("Arn", "").startswith(
+        f"arn:aws:sts::{account}:assumed-role/voclabs/"
+    ):
+        raise ValueError("Unexpected Academy account or session role.")
+    firehose = session.client("firehose", config=options)
+    verify_lake(firehose, session.client("s3", config=options), account)
     rows = session.client("dynamodb", config=options).query(
         TableName="af-dev-arquifusion",
         KeyConditionExpression="PK = :machine",
@@ -102,44 +130,36 @@ def send(case: Path, account: str, session) -> None:
             receipts.flush()
             os.fsync(receipts.fileno())
 
-        note("lambda-attempt", messageId=message["messageId"], sha256=hashlib.sha256(raw).hexdigest())
-        accepted = functions.invoke(FunctionName=arn, InvocationType="Event", Payload=raw)
-        if body := accepted.get("Payload"):
-            body.close()
-        if accepted.get("StatusCode") != 202:
-            raise ValueError("Lambda did not acknowledge the asynchronous invocation.")
-        note("lambda-accepted", requestId=accepted["ResponseMetadata"]["RequestId"])
-        note("firehose-attempt")
-        response = firehose.put_record_batch(DeliveryStreamName=STREAM, Records=[{"Data": record}])
-        entries = response.get("RequestResponses", [])
-        entry = entries[0] if len(entries) == 1 else {}
-        if response.get("FailedPutCount") != 0 or entry.get("ErrorCode") or not entry.get("RecordId"):
-            note(
-                "firehose-unconfirmed",
-                errorCode=entry.get("ErrorCode"),
-                requestId=response["ResponseMetadata"]["RequestId"],
-            )
+        note("firehose-attempt", messageId=message["messageId"], sha256=hashlib.sha256(record).hexdigest())
+        response = firehose.put_record(DeliveryStreamName=STREAM, Record={"Data": record})
+        if not response.get("RecordId"):
+            note("firehose-unconfirmed", requestId=response["ResponseMetadata"]["RequestId"])
             raise ValueError("Firehose did not acknowledge this record. Check the journal before any replay.")
-        note("firehose-accepted", recordId=entry["RecordId"], requestId=response["ResponseMetadata"]["RequestId"])
+        note("firehose-accepted", recordId=response["RecordId"], requestId=response["ResponseMetadata"]["RequestId"])
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("case_id", help="ID of an existing case under build/telemetry-cases.")
-    parser.add_argument("--send", action="store_true", help="Send this one reading to the approved Academy targets.")
-    parser.add_argument("--account-id", help="Explicit, approved AWS Academy account for --send.")
-    args = parser.parse_args()
+    parser.add_argument("--send", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--send-firehose-only", action="store_true", help="Submit a single record directly to Firehose."
+    )
+    parser.add_argument("--account-id", help="Approved Academy account for --send-firehose-only.")
+    args = parser.parse_args(argv)
+    if args.send:
+        parser.error("The legacy --send is retired. This command cannot send telemetry through Lambda.")
     if not re.fullmatch(r"[a-f0-9]{32}", args.case_id):
         parser.error("Pass the case ID, not an arbitrary path.")
     case = CASES / args.case_id
-    if args.send and not re.fullmatch(r"[0-9]{12}", args.account_id or ""):
-        parser.error("--send requires an explicitly approved --account-id.")
+    if args.send_firehose_only and args.account_id != ACCOUNT:
+        parser.error("--send-firehose-only requires the approved Academy --account-id.")
     try:
-        if args.send:
+        if args.send_firehose_only:
             import boto3
 
-            send(case, args.account_id, boto3.Session(profile_name="default", region_name=REGION))
-            print(f"Both services accepted the record. Evidence: {case / 'dispatch.jsonl'}")
+            send_firehose_only(case, args.account_id, boto3.Session(profile_name="default", region_name=REGION))
+            print(f"Firehose accepted one record. Evidence: {case / 'dispatch.jsonl'}")
         else:
             message, raw, _ = check_case(case)
             print(
