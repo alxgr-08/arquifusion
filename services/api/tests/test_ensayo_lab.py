@@ -3,6 +3,7 @@ real Step Function definition, the real Lambdas and the API Lambda invoked direc
 
 import json
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -70,10 +71,13 @@ def write_kit(kit: dict, folder: Path) -> Path:
     return folder
 
 
-def lab_harness(kit: dict, tmp_path: Path, case2: bool = False) -> Harness:
-    """Same rows and the same conditional writer as `seed_ensayo.py --apply`."""
+def lab_harness(kit: dict, tmp_path: Path | None = None, case2: bool = False) -> Harness:
+    """Same rows and the same conditional writer as `seed_ensayo.py --apply`.
+
+    Also used by test_multicloud_rehearsal.py as `lab_harness(kit, case2=True)`, without tmp_path."""
     h = Harness()
-    rows = seed_ensayo.load_items(write_kit(kit, tmp_path / "kit"), with_stock=case2)
+    folder = (tmp_path or Path(tempfile.mkdtemp(prefix="af-kit-"))) / "kit"
+    rows = seed_ensayo.load_items(write_kit(kit, folder), with_stock=case2)
     assert {s for s, _ in put_new(h.table, rows, apply=True)} == {"CREATED"}
     return h
 
