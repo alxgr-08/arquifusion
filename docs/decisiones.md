@@ -74,3 +74,4 @@ Se autorizaron y aplicaron cinco paquetes y el ASL (0/6/0), más una actualizaci
 ## Corte posterior al alta de hosting
 
 El plan autorizado de Amplify creó únicamente la app WEB `af-dev-arquifusion-web` y la rama manual `demo` (2/0/0), con origen `https://demo.d2ygcm34t8aku9.amplifyapp.com`. El estado pasó a 29 recursos, sin drift ni publicación del frontend. La API completa se prepara cerrada con 12 rutas JWT (31/0/0, 29 no-op) mientras Alexis confirma el origen Google. Los planes anteriores al hosting requieren regeneración. El lago y los consumidores siguen sin desplegar. [Preparación actual sin nuevas escrituras cloud](rol1-listo-2026-11-15.md)
+| 2026-11-15 | Seeds are conditional: `seed_ensayo.py` / `seed_demo.py` create only absent rows, report `CONFLICT`, and write SSM only on request | Shared table and Terraform-managed parameters must never be overwritten by a seed (review of #50) |

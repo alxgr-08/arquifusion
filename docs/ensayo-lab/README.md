@@ -28,10 +28,8 @@ un segundo incidente; caso 2 consume 1 unidad solo de `WH-E0007`; stocks compart
 
 ```bash
 T=af-dev-arquifusion; cd ensayo-0007
-# 1. Filas de la corrida, solo si no existen (nunca sobrescriben)
-for f in item-op-settings item-machine item-technician item-grant-operador; do
-  aws dynamodb put-item --table-name $T --item file://$f.json --condition-expression "attribute_not_exists(PK)"
-done
+# 1. Filas de la corrida, solo si no existen (nunca sobrescriben; sin --apply solo muestra el plan)
+cd .. && python scripts/seed_ensayo.py ensayo-0007 && python scripts/seed_ensayo.py ensayo-0007 --apply && cd ensayo-0007
 # 2. Ejecución (directa o por af-dev-incident-entry); anotar ambos executionArn por separado
 aws stepfunctions start-execution --state-machine-arn <arn> --name ensayo-0007-caso1 \
   --input file://anomaly-caso1-vibracion.json
@@ -58,6 +56,20 @@ Evidencia a registrar por separado: estado de la ejecución de entrada y de `af-
 (`timeline` DETECTED, ASSIGNED, ARRIVED, RESOLVED; `certified`); recibos `ACK#…`; una publicación SNS (`MessageId`)
 y, aparte, la notificación recibida por una persona.
 
+## Web autenticada (HTTPS + Google)
+
+`seed_ensayo.py` también crea la metadata que la web necesita: `OP#ENSAYO-0007 / META` (zonas y almacenes),
+`ZONE#ZE` y `WH#WH-E0007`. La web se construye con `VITE_OPERATION_ID=ENSAYO-0007`. Un 200 con lista vacía significa
+que esa operación no tiene datos (no que falló la infraestructura).
+
+Permisos de los participantes: completar el `sub` de Google de cada persona en `grants-participantes.json`
+(jefe de mantenimiento, técnico asignado `T-E0007`, supervisor) y cargarlos con
+`python scripts/seed_grants.py ensayo-0007/grants-participantes.json`. El archivo no va al repo ni a issues; el
+script rechaza las plantillas sin completar. Cada fila debe ser la cuenta real de esa persona.
+
+`scripts/seed_demo.py` ahora también es condicional por defecto (crea solo lo que falta, informa `CONFLICT` y no
+toca SSM salvo con `--write-ssm`); para una operación aislada usar este kit.
+
 ## Reenvío del mismo evento
 
 Con la regla apagada, volver a iniciar una ejecución con el **mismo** `anomaly-caso1-vibracion.json` (otro `--name`).
@@ -66,7 +78,7 @@ Esperado: termina en `DuplicateIgnored` y no hay un segundo `INCIDENT#` para `EN
 ## Caso 2 (descuento real)
 
 ```bash
-aws dynamodb put-item --table-name $T --item file://item-stock-caso2.json --condition-expression "attribute_not_exists(PK)"
+python scripts/seed_ensayo.py ensayo-0007 --apply --with-stock
 aws stepfunctions start-execution --state-machine-arn <arn> --name ensayo-0007-caso2 \
   --input file://anomaly-caso2-rodamiento.json
 ```

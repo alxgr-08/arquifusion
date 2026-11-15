@@ -1,14 +1,18 @@
 """Seed the demo fleet into DynamoDB and SSM from contracts/examples/fleet-config.json. Owner: Rol 2.
 
 Usage (lab credentials in ~/.aws/credentials):
-    python scripts/seed_demo.py --demo            # items + SSM, short timeouts for the video
-    python scripts/seed_demo.py --only-ssm        # refresh parameters without touching table state
-    python scripts/seed_demo.py --dry-run         # print what would be written
+    python scripts/seed_demo.py --dry-run         # what would be created / already exists / conflicts
+    python scripts/seed_demo.py                   # create only the rows that are absent (never overwrites)
+    python scripts/seed_demo.py --write-ssm       # also write the SSM parameters (only where Terraform does not
+                                                  # manage them; the full fleet-config is ~4.2 KB > SSM Standard)
+    python scripts/seed_demo.py --overwrite       # old behaviour: batch put that replaces existing rows
+
+For an isolated operation (lab, demo web) use scripts/ensayo_kit.py + scripts/seed_ensayo.py instead.
 
 Writes:
   DynamoDB  OP#/META, OP#/ZONE#, OP#/WH#, MACHINE#/PROFILE, MODEL#/BASELINE (until bigquery-sync-back runs),
             TECH#/PROFILE, PART#/META, PART#/STOCK#
-  SSM       /af/sim/fleet-config (the whole fleet-config.json), /af/sim/faults, /af/incident/settings
+  SSM       only with --write-ssm / --only-ssm: /af/sim/fleet-config, /af/sim/faults, /af/incident/settings
 """
 
 from __future__ import annotations
@@ -156,27 +160,35 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default=str(ROOT / "contracts/examples/fleet-config.json"))
     parser.add_argument("--demo", action="store_true", help="short Step Function timeouts for the video")
-    parser.add_argument("--only-ssm", action="store_true")
+    parser.add_argument("--only-ssm", action="store_true", help="write only the SSM parameters")
+    parser.add_argument("--write-ssm", action="store_true", help="also write the SSM parameters")
+    parser.add_argument("--overwrite", action="store_true", help="replace existing rows (batch put)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     raw = json.loads(Path(args.config).read_text(encoding="utf-8"))
     items = [] if args.only_ssm else build_items(raw)
-    params = build_parameters(raw, args.demo)
-    if args.dry_run:
-        print(f"{len(items)} items, parameters: {', '.join(params)}")
-        return 0
+    params = build_parameters(raw, args.demo) if (args.write_ssm or args.only_ssm) else {}
 
     from af_shared.ddb import get_table
+    from conditional_seed import print_report, put_new
 
-    with get_table().batch_writer() as batch:
-        for item in items:
-            batch.put_item(Item=item)
-    store = config.ParamStore()
-    for name, value in params.items():
-        store.put_json(name, value)
-    print(f"Seeded {len(items)} items and {len(params)} SSM parameters")
-    return 0
+    table = get_table()
+    status = 0
+    if args.overwrite and not args.dry_run:
+        with table.batch_writer() as batch:
+            for item in items:
+                batch.put_item(Item=item)
+        print(f"Overwrote {len(items)} items")
+    elif items:
+        status = print_report(put_new(table, items, apply=not args.dry_run))
+    if params and not args.dry_run:
+        store = config.ParamStore()
+        for name, value in params.items():
+            store.put_json(name, value)
+    if params:
+        print(("Would write" if args.dry_run else "Wrote") + " SSM: " + ", ".join(params))
+    return status
 
 
 if __name__ == "__main__":

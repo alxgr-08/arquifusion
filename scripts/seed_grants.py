@@ -33,6 +33,8 @@ GOOGLE_ISS = "accounts.google.com"
 def build_items(rows: list[dict[str, Any]], current: dict[tuple[str, str], dict[str, Any]]) -> list[dict[str, Any]]:
     items = []
     for row in rows:
+        if str(row.get("sub", "")).startswith("<") or not row.get("sub"):
+            raise ValueError(f"Fill in the Google sub of {row.get('label') or row}")
         item = grants.item(
             row.get("iss", GOOGLE_ISS),
             str(row["sub"]),
