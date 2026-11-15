@@ -22,12 +22,13 @@ Fetch = Callable[[str], Iterable[dict[str, Any]]]
 
 SELECTED_KPI_SQL = """
 WITH scope AS (
-  SELECT machineId AS machine_id, ANY_VALUE(model) AS model
-  FROM `arquifusion.af_lake.telemetry`
-  WHERE machineId = @machine_id AND DATE(timestamp) = @kpi_date
-  GROUP BY machineId
-  HAVING COUNTIF(operationId IS NULL OR operationId != @operation_id OR model IS NULL) = 0
-    AND COUNT(DISTINCT model) = 1
+  SELECT tel.machineId AS machine_id, ANY_VALUE(tel.model) AS model
+  FROM `arquifusion.af_lake.telemetry` AS tel
+  WHERE tel.machineId = @machine_id AND DATE(tel.timestamp) = @kpi_date
+  GROUP BY tel.machineId
+  -- Qualified with `tel.`: a bare `model` here resolves to the ANY_VALUE alias (aggregation of an aggregation).
+  HAVING COUNTIF(tel.operationId IS NULL OR tel.operationId != @operation_id OR tel.model IS NULL) = 0
+    AND COUNT(DISTINCT tel.model) = 1
 )
 SELECT k.*, @operation_id AS operation_id, c.cluster_id, c.cluster_label,
        t.trend_pct_per_week, t.progressive_increase
