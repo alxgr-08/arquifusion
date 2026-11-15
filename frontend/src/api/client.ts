@@ -24,6 +24,8 @@ export interface FleetApi {
   injectFault(machineId: string, faultType: FaultType): Promise<void>;
 }
 
+const ACK_ATTEMPTS = 4;
+
 export class ApiRequestError extends Error {
   constructor(
     readonly status: number,
@@ -89,11 +91,20 @@ export class HttpFleetApi implements FleetApi {
   getKpis(op: string, date: string) {
     return this.request<MachineKpi[]>(`/operations/${op}/kpis?date=${date}`);
   }
-  ackIncident(machineId: string, incidentId: string, action: "ARRIVED" | "RESOLVED") {
-    return this.request<Incident>(`/machines/${machineId}/incidents/${incidentId}/ack`, {
-      method: "POST",
-      body: JSON.stringify({ action }),
-    });
+  /** 503 CALLBACK_PENDING (contracts/api.md v1.1): the confirmation is stored, repeat the same action. */
+  async ackIncident(machineId: string, incidentId: string, action: "ARRIVED" | "RESOLVED") {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.request<Incident>(`/machines/${machineId}/incidents/${incidentId}/ack`, {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        });
+      } catch (err) {
+        const pending = err instanceof ApiRequestError && err.status === 503 && err.code === "CALLBACK_PENDING";
+        if (!pending || attempt >= ACK_ATTEMPTS) throw err;
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      }
+    }
   }
   async injectFault(machineId: string, faultType: FaultType) {
     await this.request<void>(`/simulator/faults`, { method: "POST", body: JSON.stringify({ machineId, faultType }) });
