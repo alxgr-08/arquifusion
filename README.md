@@ -1,19 +1,21 @@
 # ArquiFusion Fleet Intelligence
 
-Plataforma serverless y multinube para flotas de maquinaria pesada. Convierte la telemetría en decisiones de mantenimiento: detecta anomalías, abre el incidente, asigna técnico y repuesto, confirma la llegada y la resolución, y analiza el histórico para anticipar consumo anómalo y demanda de piezas.
+ArquiFusion ayuda a un equipo de mantenimiento a decidir cuándo intervenir una máquina, qué repuesto reservar y a quién asignar la reparación. AWS Academy coordina la atención del incidente. Google Cloud analiza el histórico de la flota para detectar consumos anómalos y anticipar la demanda de piezas.
 
-![Arquitectura](docs/architecture.png)
+[![Arquitectura de ArquiFusion. AWS Academy gestiona los incidentes, BigQuery ML analiza el histórico sintético y el puente entre nubes queda pendiente.](docs/architecture.png)](docs/architecture.png)
 
-[Diagrama editable (Draw.io)](docs/architecture.drawio) · [SVG](docs/architecture.svg) · [Arquitectura por componente](docs/arquitectura.md) · [Web de la demo](https://demo.d2ygcm34t8aku9.amplifyapp.com)
+[PNG para Canvas](docs/architecture.png) · [JPG original](docs/architecture.jpg) · [Arquitectura y evidencias](docs/arquitectura.md) · [Web de la demo](https://demo.d2ygcm34t8aku9.amplifyapp.com)
 
 ## Dos nubes
 
 | Nube | Qué hace | Servicios |
 |---|---|---|
-| **AWS** (Academy Learner Lab, `us-east-1`) | Opera la flota en tiempo real: evaluación de salud, incidentes, técnicos, stock y web | Lambda (Python 3.12), Step Functions, DynamoDB (PITR, Streams, TTL), EventBridge, SQS (DLQ), SNS, API Gateway HTTP con JWT de Google, Amplify Hosting, SSM Parameter Store, CloudWatch |
-| **Google Cloud** (proyecto `arquifusion`) | Analiza el histórico y entrena los modelos | BigQuery, BigQuery ML (`ARIMA_PLUS`, `KMEANS`), Google Identity Services para el login |
+| **AWS Academy Learner Lab** (`us-east-1`) | Evalúa salud y coordina incidentes, técnicos y stock. La web identifica a la persona con Google y la API comprueba su operación, rol y asignación. | Lambda, Step Functions Standard, DynamoDB, EventBridge, SQS, SNS, API Gateway HTTP con autorizador JWT, Amplify Hosting, SSM y CloudWatch |
+| **Google Cloud** (proyecto `arquifusion`, ubicación `US`) | Analiza 69 120 lecturas sintéticas de 12 máquinas durante 60 días. Dos modelos ARIMA_PLUS y un KMEANS producen resultados sobre combustible, uso de la flota y demanda de piezas. | BigQuery y BigQuery ML |
 
-El histórico de BigQuery es sintético (12 máquinas) y está rotulado como tal. El puente AWS ↔ BigQuery (Firehose + Glue → S3 Parquet → BigQuery → KPI de vuelta a DynamoDB) está diseñado e implementado en código ([`lake_to_bigquery`](services/lake_to_bigquery/), [`bigquery_sync_back`](services/bigquery_sync_back/)) y Firehose/Glue se probó en un ensayo temporal, pero el recorrido completo no está desplegado en esta entrega.
+**Qué se probó.** En Academy, el ensayo manual `INC-a8c8` terminó con dos acuses, un mantenimiento y una pieza consumida. El técnico confirmó acceso a la web de `ENSAYO-0001`. Al corte de la lámina, sigue pendiente grabar la llegada y la resolución de `ENS-0001` por HTTPS. En Google Cloud, el equipo ejecutó los modelos sobre el histórico sintético. [Evidencia de AWS](docs/evidencias/2026-11-15-academy.json) · [Ensayo web](https://github.com/alxgr-08/arquifusion/issues/23) · [Resultados de BigQuery](analytics/README.md)
+
+**Puente entre nubes.** Un ensayo temporal verificó la conversión de Firehose a Parquet en S3 con un esquema de Glue. El repositorio contiene el exportador de incidentes y consumos, el cargador de BigQuery y el retorno de KPI a DynamoDB. El recorrido de una misma lectura entre ambas nubes queda fuera del despliegue de esta entrega. [Alcance acordado](https://github.com/alxgr-08/arquifusion/issues/14#issuecomment-6901536999)
 
 En el Learner Lab, alcanzar diez ejecuciones Lambda simultáneas pone en riesgo la cuenta compartida. La TA indicó ejecutar la ingesta con Python/Boto3 desde una máquina. La demo utiliza un evento manual de incidente, la regla EventBridge deshabilitada y los datos históricos ya cargados en BigQuery. [Estado, restricciones y recorrido del ensayo](docs/arquitectura.md)
 
@@ -21,11 +23,11 @@ En el Learner Lab, alcanzar diez ejecuciones Lambda simultáneas pone en riesgo 
 
 | Criterio | Dónde está |
 |---|---|
-| Persistencia y alta disponibilidad | DynamoDB bajo demanda con PITR, Streams y TTL; outbox de alertas; recibos idempotentes con ETag/If-Match ([`infra/aws/dynamodb.tf`](infra/aws/dynamodb.tf)) |
+| Persistencia y alta disponibilidad | DynamoDB regional bajo demanda con PITR, Streams, TTL y protección contra borrado. La aplicación conserva alertas pendientes y recibos de acuse por espera. [Configuración de la tabla](infra/aws/dynamodb.tf) |
 | Step Functions | Flujo de incidente: correlación, reserva de pieza, diagnóstico, asignación, avisos y dos esperas con callback (llegada y resolución) ([`statemachines/`](statemachines/)) |
 | Dos nubes | AWS para la operación, GCP BigQuery/BigQuery ML para la analítica |
-| Serverless | Solo Lambda, Step Functions, DynamoDB, API Gateway, Amplify y BigQuery; sin servidores ni VPC |
-| IA | BigQuery ML: pronóstico de consumo de combustible y de demanda de repuestos (`ARIMA_PLUS`) y segmentación de la flota (`KMEANS`) ([`analytics/`](analytics/)). Diagnóstico del incidente con Claude en Amazon Bedrock y respaldo por reglas; la demo usa el de reglas ([`services/ai_diagnosis/`](services/ai_diagnosis/)) |
+| Serverless | La aplicación y el flujo de incidentes utilizan servicios administrados. El equipo opera la demo sin aprovisionar servidores. |
+| IA | BigQuery ML detecta anomalías de combustible, pronostica demanda de repuestos y agrupa máquinas por uso. En Academy, el diagnóstico del incidente se ejecuta por reglas. [Consultas de demostración](analytics/demo_queries.sql) |
 | Seguridad de variables globales | SSM Parameter Store para la configuración de las Lambdas; sin secretos en código, Terraform ni Vite. Acceso con Google Sign-In, autorizador JWT y permisos por operación y rol en DynamoDB |
 
 ## Equipo
