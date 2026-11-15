@@ -38,6 +38,7 @@ backend.hcl
 gcp-sa*.json
 service-account*.json
 arquifusion-????????????.json
+grants-participantes*.json
 
 # OS / IDE
 .DS_Store

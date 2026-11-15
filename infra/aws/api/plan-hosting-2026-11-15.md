@@ -1,5 +1,7 @@
 # Plan de API después del hosting · 15/11/2026
 
+**Informe histórico anterior al despliegue.** La API abierta ya fue aplicada con otro plan y el estado tiene 60 recursos. No aplicar las alternativas de este documento. [Despliegue, web y participantes actuales](../../../docs/cierre-rol1-2026-11-15.md)
+
 ## Entorno y alcance
 
 Preparación local de Leonardo, Rol 1, en `infra/rol1-entrega-academy`, commit `9d2994b1d535d0a021e0e7f26874925060d42638`. `git fetch origin` mantiene `origin/main` en `53f9755`; la rama está tres commits por delante y cero por detrás. No se integraron ramas ni se hicieron commits o push en esta etapa.

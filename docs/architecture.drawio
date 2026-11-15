@@ -170,16 +170,16 @@
         <mxCell id="relation-56" parent="1" source="node-24" target="node-25" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="item-57" parent="1" vertex="1" value="API desplegada; ensayo web pendiente" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=23;fontColor=#16324b;fontStyle=1;">
+        <mxCell id="item-57" parent="1" vertex="1" value="Web y API desplegadas; ensayo JWT pendiente" style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=23;fontColor=#16324b;fontStyle=1;">
           <mxGeometry x="50" y="1104" width="1740" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="item-58" parent="1" vertex="1" value="401 sin token e inválido y CORS exacto / origen ajeno: PASS. Login válido y ACK HTTPS pendientes; frontend sin publicar." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
+        <mxCell id="item-58" parent="1" vertex="1" value="Web HTTPS 200 y ZIP verificados; 401 sin token e inválido y CORS: PASS. Login Google válido y ACK HTTPS aún pendientes." style="text;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=16;fontColor=#435a70;fontStyle=0;">
           <mxGeometry x="50" y="1137" width="1740" height="23" as="geometry" />
         </mxCell>
-        <mxCell id="node-26" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;AWS Amplify Hosting&lt;/b&gt;&lt;br&gt;App WEB + rama demo creadas&lt;br&gt;Frontend aún sin publicar" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
+        <mxCell id="node-26" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;AWS Amplify Hosting&lt;/b&gt;&lt;br&gt;Web live publicada · job 1 OK&lt;br&gt;HTTPS 200 y ZIP verificados" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="50" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-27" parent="1" vertex="1" value="&lt;font color=&quot;#31599b&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;LOCAL&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;React + Vite / GIS&lt;/b&gt;&lt;br&gt;Origen Google: Alexis confirmó&lt;br&gt;VITE_API_MODE=live en el ensayo" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#e6eeff;strokeColor=#31599b;strokeWidth=1.5;">
+        <mxCell id="node-27" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;React + Vite / GIS&lt;/b&gt;&lt;br&gt;Origen Google: Alexis confirmó&lt;br&gt;Modo live · login aún pendiente" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="410" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
         <mxCell id="node-28" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;HTTP API Gateway&lt;/b&gt;&lt;br&gt;12 rutas JWT · Google · stage dev&lt;br&gt;401 y CORS comprobados" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
@@ -188,13 +188,13 @@
         <mxCell id="node-29" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;Lambda API&lt;/b&gt;&lt;br&gt;Python 3.12 · LabRole existente&lt;br&gt;Control de rol, operación y técnico" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="1130" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="node-30" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;DynamoDB / workflow&lt;/b&gt;&lt;br&gt;Datos / grants reales sin sembrar&lt;br&gt;ACK HTTPS aún sin ejecutar" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
+        <mxCell id="node-30" parent="1" vertex="1" value="&lt;font color=&quot;#147150&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;OBSERVADO&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;b style=&quot;font-size:20px&quot;&gt;DynamoDB / workflow&lt;/b&gt;&lt;br&gt;2 grants reales cargados&lt;br&gt;ACK HTTPS aún sin ejecutar" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=left;spacingLeft=14;verticalAlign=middle;fontSize=15;fontFamily=Arial;fontColor=#18324b;fillColor=#dcf5e8;strokeColor=#147150;strokeWidth=1.5;">
           <mxGeometry x="1490" y="1168" width="309" height="108" as="geometry" />
         </mxCell>
-        <mxCell id="relation-64" parent="1" source="node-26" target="node-27" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;">
+        <mxCell id="relation-64" parent="1" source="node-26" target="node-27" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="relation-65" parent="1" source="node-27" target="node-28" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;startArrow=block;startFill=1;">
+        <mxCell id="relation-65" parent="1" source="node-27" target="node-28" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="relation-66" parent="1" source="node-28" target="node-29" edge="1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#526b80;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;startArrow=block;startFill=1;">

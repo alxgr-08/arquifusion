@@ -13,7 +13,7 @@ El ZIP anterior de `bigquery-sync-back` no contenía esa corrección. Se reconst
 | `build/bridge/lake-to-bigquery.zip` | `2106db46bbcc08604e42cc0601316cecadacc4ccce03e0f8abebefca6b107ddf` | Handler ya coincide con main; no necesitó reconstrucción |
 | `build/bridge/stream-exporter.zip` | `b8a9db040d2ed00d4e6cd377672646c99cd634deceec92ef48da46a05486858a` | Handler ya coincide con main; no necesitó reconstrucción |
 
-El paquete nuevo ocupa 35.771.190 bytes, 77.970.602 expandido. CRC y vinculación de la fuente con el checkout pasaron; no incluye PyArrow ni pandas. Pasaron **12 pruebas del servicio de retorno**, y otras **10 del conjunto seleccionado KPI/relay**, ambas con sockets bloqueados. Los conjuntos se solapan y no representan 22 pruebas distintas. El smoke de fuentes pasó en Windows; una nueva importación nativa Linux corresponde a la CI del siguiente corte, no se simula como comprobación local.
+El paquete nuevo ocupa 35.771.190 bytes, 77.970.602 expandido. CRC y vinculación de la fuente con el checkout pasaron; no incluye PyArrow ni pandas. Pasaron **12 pruebas del servicio de retorno** y **10 del conjunto seleccionado KPI/relay**, con sockets bloqueados. Los conjuntos se solapan y no suman 22 distintas. El smoke de fuentes pasó en Windows. La [CI Terraform del PR #55](https://github.com/alxgr-08/arquifusion/actions/runs/43755932793) reconstruyó e importó los tres ZIP en **Linux x86_64 CPython 3.12**, con hashes iguales a los locales.
 
 La evidencia detallada está en `build/cierre-demo-20261115/bridge/validation.json`, excluida de Git. No se desplegó el ZIP ni se ejecutó el retorno en ninguna nube.
 
@@ -74,7 +74,7 @@ La vía más directa con el código actual es autorizar a un operador común par
 
 ## Responsables y siguiente acción
 
-- **Leonardo:** conserva la copia actual del paquete, revisa/despliega el lago y los componentes que se autoricen, y mantiene los 29 recursos existentes y EventBridge DISABLED al preparar cada nueva etapa. Concilia y regenera planes después de cualquier despliegue.
+- **Leonardo:** conserva los paquetes y prepara el lago y componentes que se autoricen sobre los **60 recursos actuales**, incluida la API y el hosting. Mantiene EventBridge DISABLED. Concilia y regenera los planes antiguos después del despliegue.
 - **Alexis:** confirma cómo obtiene acceso Google el operador común o acuerda el protocolo de dos operadores; genera el KPI del caso nuevo. Staging y corrección #53 ya están reportados como resueltos.
 - **Sebastián:** prepara/revisa la operación de demo y sus grants para la lectura web; su simulador direct ya puede producir la lectura completa sin desplegar un proceso periódico.
 

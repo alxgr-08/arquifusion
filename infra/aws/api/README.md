@@ -55,7 +55,7 @@ ack_frontend_origin      = "http://localhost:5173"
 
 El perfil público [ensayo-0001.tfvars.example](ensayo-0001.tfvars.example) conserva Amplify y configura la API con las doce rutas JWT para la operación `ENSAYO-0001`. La autorización de Leonardo permitió aplicar exclusivamente el plan guardado `api-open.tfplan`, con SHA-256 `87F604A64FDBB40E592D04164D2030918F165798E66A60BCA5DFC5E6C79116BB`: **31 altas, 0 cambios y 0 bajas; los 29 recursos anteriores sin cambios**. Su URL real es `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`. La regla de incidentes permanece deshabilitada. [Relevo del cierre y comprobaciones](../../../docs/cierre-rol1-2026-11-15.md)
 
-El endpoint exige JWT incluso mientras faltan los datos del ensayo y las concesiones reales. La API usa `ENSAYO-0001`; los usuarios necesitan una concesión para esa operación, y TECHNICIAN debe corresponder a `T-E0001`. No reutilizar automáticamente permisos de `MINA-NORTE`. La preparación offline usa los scripts de Sebastián y rechaza plantillas de participantes incompletas:
+El endpoint exige JWT. El kit `ENSAYO-0001` y dos concesiones reales ya están cargados; TECHNICIAN corresponde a `T-E0001`. La web live está publicada y falta que los participantes prueben login y acuse por HTTPS. No reutilizar automáticamente permisos de `MINA-NORTE`. La preparación offline usa los scripts de Sebastián y rechaza plantillas incompletas; para otra corrida generar un directorio nuevo, sin reescribir el kit ya cargado:
 
 ```powershell
 python infra/aws/incident/preflight_web_demo.py prepare --kit build/ensayo-0001
@@ -79,11 +79,11 @@ python infra/aws/api/review_plan.py build/terraform-review/ensayo-flota.tfplan -
 
 Los nombres de archivo son ejemplos para los planes recién generados. Para un origen HTTPS registrado, añadir `--origin` con su valor exacto. El cliente live conserva el ETag de la espera mostrada, lo envía en `If-Match` y lee `Retry-After`. [Cliente del frontend](../../../frontend/src/api/client.ts)
 
-### Preparación posterior al hosting
+### Revisión histórica posterior al hosting
 
-Amplify ya administra la aplicación `af-dev-arquifusion-web` y la rama manual `demo`. El origen reservado es `https://demo.d2ygcm34t8aku9.amplifyapp.com`. Alexis debe confirmar su registro en Google. Mientras responde, el perfil de revisión [hosting-review.tfvars.example](hosting-review.tfvars.example) prepara las 12 rutas del dashboard con el endpoint cerrado. El CORS exacto no demuestra por sí solo que Google haya autorizado el origen.
+El perfil [hosting-review.tfvars.example](hosting-review.tfvars.example) conserva la revisión cerrada anterior a la confirmación de Alexis. Sus conteos de 31 altas y 29 no-op corresponden a esa fotografía. No aplicarlo a la base actual de 60 recursos como si faltara crear la API. La confirmación Google, el plan abierto autorizado y la publicación live están registrados en la sección de despliegue de esta guía y el relevo.
 
-Después del hosting, los planes anteriores basados en 27 recursos quedaron obsoletos. Conservar `prepare_manual_web_hosting=true` al regenerar cualquier etapa y utilizar `--existing-hosting` para su revisión. El perfil completo debe proponer 31 altas de API, cero cambios/bajas y 29 no-op. El endpoint se abrirá con otro plan revisado cuando se confirme el origen y se autorice el ensayo. [Plan y comprobaciones actuales](plan-hosting-2026-11-15.md)
+Conservar API y `prepare_manual_web_hosting=true` al regenerar cualquier etapa. La instrucción siguiente solo ilustra cómo se revisó el archivo cerrado histórico; no es el próximo despliegue. [Informe histórico](plan-hosting-2026-11-15.md) · [Estado actual](../../../docs/cierre-rol1-2026-11-15.md)
 
 ```powershell
 python infra/aws/api/review_plan.py build/api-hosting-20261115/api-dashboard-closed.tfplan --expect closed --fleet-reads --existing-hosting --origin https://demo.d2ygcm34t8aku9.amplifyapp.com

@@ -201,7 +201,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["check", "prepare", "probe"])
     parser.add_argument("--terraform", default=shutil.which("terraform"))
-    parser.add_argument("--operation", default="MINA-NORTE")
+    parser.add_argument("--operation", default="ENSAYO-0001")
     parser.add_argument("--output", type=Path, default=ROOT / "build/readiness-20261115/web/live-release")
     parser.add_argument(
         "--send", action="store_true", help="Perform only the GET/OPTIONS probes; no token or POST is accepted"

@@ -18,7 +18,7 @@ npm --prefix frontend test -- --run
 npm --prefix frontend run build
 ```
 
-El frontend usa `mock` por defecto. Para el ensayo autorizado utiliza `live`, el client ID público, el origen Amplify ya confirmado en Google y la URL real de la API con stage. La operación acordada es `ENSAYO-0001`; su kit está preparado pero aún no se sembró y los grants reales no se cargaron. En desarrollo, los servicios se prueban con fakes/moto sin sesión cloud. Los tokens y secretos no pertenecen a las variables Vite.
+El frontend usa `mock` por defecto en desarrollo. La web publicada usa `live`, el client ID público, el origen Amplify registrado en Google y la API real con stage. `ENSAYO-0001` ya tiene sus siete filas conciliadas y dos grants reales cargados; falta el ensayo de login y acuse HTTPS. En desarrollo, los servicios se prueban con fakes/moto sin sesión cloud. Los tokens y secretos no pertenecen a las variables Vite.
 
 ## Operación
 
@@ -30,4 +30,4 @@ La IaC de Leonardo y las correcciones de los tres roles están en `main` mediant
 
 Google ya tiene registrado el origen `https://demo.d2ygcm34t8aku9.amplifyapp.com`. Alexis reportó `arquifusion.af_bridge_stage` en US con vencimiento de tablas de 24 horas. La CLI de Leonardo está instalada pero sin identidad Google local: esa comprobación del propietario no sustituye el preflight de la futura sesión del operador. El ejemplo Terraform de staging mantiene su creación deshabilitada para evitar proponer otra alta del dataset existente.
 
-Leonardo autorizó exclusivamente el plan guardado de API con SHA-256 `87F604A64FDBB40E592D04164D2030918F165798E66A60BCA5DFC5E6C79116BB`: 31 altas, cero cambios/bajas y 29 recursos previos en no-op. Su aplicación terminó con ese mismo conteo. La URL real es `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`; consultar las verificaciones posteriores en el [relevo de cierre](cierre-rol1-2026-11-15.md). Esa autorización no incluye sembrar datos/grants, publicar la web, crear el lago, cargar BigQuery o ejecutar el ensayo.
+Leonardo autorizó el plan guardado de API con SHA-256 `87F604A64FDBB40E592D04164D2030918F165798E66A60BCA5DFC5E6C79116BB`: 31 altas, cero cambios/bajas y 29 recursos previos en no-op. La API real es `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`; el estado posterior contiene 60 recursos sin drift. Posteriormente se conciliaron las siete filas del kit y la publicación live y se crearon los dos grants aportados, sin sobrescrituras. La [web HTTPS](https://demo.d2ygcm34t8aku9.amplifyapp.com) muestra el acceso Google. El login real y el acuse requieren la participación de los usuarios; lago y puente siguen pendientes. [Evidencia y próximos pasos](cierre-rol1-2026-11-15.md)
