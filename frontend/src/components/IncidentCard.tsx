@@ -22,6 +22,10 @@ const ACK_ERROR: Record<string, string> = {
   NO_TECH_ID: "Tu cuenta no está vinculada a un técnico.",
   GRANT_CHANGED: "Tus permisos cambiaron; vuelve a intentarlo.",
   CALLBACK_PENDING: "La confirmación quedó guardada; inténtalo de nuevo en unos segundos.",
+  STALE_WAIT: "La espera cambió. Revisa la asignación y confirma de nuevo.",
+  TASK_EXPIRED: "La espera venció. Consulta la asignación actual.",
+  WAIT_NEEDS_RECONCILIATION: "La espera necesita revisión de mantenimiento.",
+  WRONG_STAGE: "El incidente ya cambió de etapa. Actualiza el detalle.",
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -32,17 +36,39 @@ const EVENT_LABEL: Record<string, string> = {
   ESCALATED: "Escalado",
 };
 
-export function IncidentCard({ incident: i, compact, onChange }: { incident: Incident; compact?: boolean; onChange: () => void }) {
+export function IncidentCard({ incident, compact, onChange }: { incident: Incident; compact?: boolean; onChange: () => void }) {
   const { role } = useRole();
   const [busy, setBusy] = useState(false);
   const [ackError, setAckError] = useState<string>();
-  const ack = async (action: "ARRIVED" | "RESOLVED") => {
+  const [review, setReview] = useState<{ incident: Incident; etag: string | null }>();
+  const i = review?.incident ?? incident;
+  const inspect = async () => {
     setBusy(true);
     setAckError(undefined);
     try {
-      await api.ackIncident(i.machineId, i.incidentId, action);
+      const seen = await api.getIncident(incident.machineId, incident.incidentId);
+      setReview(seen);
+      if (!seen.etag) setAckError("El flujo aún no tiene una espera activa para confirmar.");
+    } catch (err) {
+      setReview(undefined);
+      setAckError(err instanceof ApiRequestError ? (ACK_ERROR[err.code] ?? err.message) : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const ack = async (action: "ARRIVED" | "RESOLVED") => {
+    if (!review?.etag) return;
+    setBusy(true);
+    setAckError(undefined);
+    try {
+      await api.ackIncident(i.machineId, i.incidentId, action, review.etag);
+      setReview(undefined);
       onChange();
     } catch (err) {
+      if (err instanceof ApiRequestError && [401, 403, 409, 412, 428].includes(err.status)) {
+        setReview(undefined);
+        onChange();
+      }
       setAckError(err instanceof ApiRequestError ? (ACK_ERROR[err.code] ?? err.message) : String(err));
     } finally {
       setBusy(false);
@@ -55,7 +81,7 @@ export function IncidentCard({ incident: i, compact, onChange }: { incident: Inc
       <header className="row between">
         <div className="row">
           <SeverityBadge severity={i.severity} />
-          <strong>{i.incidentId}</strong>
+          <Link to={`/machines/${i.machineId}/incidents/${i.incidentId}`}><strong>{i.incidentId}</strong></Link>
           <Link to={`/machines/${i.machineId}`}>{i.machineId}</Link>
           <span className="muted">zona {i.zoneId} · {formatTime(i.createdAt)}</span>
         </div>
@@ -114,8 +140,9 @@ export function IncidentCard({ incident: i, compact, onChange }: { incident: Inc
 
       {canAct && i.state !== "RESOLVED" && (
         <div className="row">
-          {i.state === "ASSIGNED" && <button disabled={busy} onClick={() => ack("ARRIVED")}>Confirmar llegada</button>}
-          {i.state === "IN_PROGRESS" && <button disabled={busy} onClick={() => ack("RESOLVED")}>Cerrar incidente</button>}
+          {(!review?.etag) && <button disabled={busy} onClick={inspect}>Revisar espera y asignación</button>}
+          {review?.etag && i.state === "ASSIGNED" && <button disabled={busy} onClick={() => ack("ARRIVED")}>Confirmar llegada</button>}
+          {review?.etag && i.state === "IN_PROGRESS" && <button disabled={busy} onClick={() => ack("RESOLVED")}>Confirmar resolución</button>}
         </div>
       )}
       {ackError && <p className="error">{ackError}</p>}

@@ -1,81 +1,24 @@
-# Rol 2 · Qué necesita cada uno para integrar el backend
+# Integración del backend en AWS Academy
 
-Las pruebas del Rol 2 corren las dos Step Functions de punta a punta (intérprete de ASL + DynamoDB en memoria),
-con la flota de `contracts/examples/fleet-config.json` y las reglas reales de `ai-diagnosis` del Rol 3.
+La base de trabajo incluye el simulador de Sebastián, sus tareas de incidente, las reglas de diagnóstico de Alexis y el protocolo de acuse v1.2 de los PR #47 y #49. El ensayo manual que ya llegó al cierre corresponde a una versión anterior del flujo. La evidencia actual y el estado de cada componente se mantienen en la [arquitectura](arquitectura.md).
 
-## Para Rol 1 (Terraform, Learner Lab)
+## Recursos y contratos de integración
 
-### Lambdas (handler `handler.handler`, Python 3.12, rol `LabRole`)
+| Componente | Entrada y destino en la demo | Configuración |
+|---|---|---|
+| Simulador | Un caso sintético manual produce la misma lectura para Health Evaluator y Firehose. | `AF_INGEST_MODE=direct`, `AF_HEALTH_EVALUATOR_FUNCTION`, `AF_FIREHOSE_STREAM`. [Caso congelado y recuperación de envíos parciales](../infra/aws/telemetry/README.md) |
+| Flujo de incidentes | EventBridge recibe `source=arquifusion.health`, tipo `AnomalyDetected`, severidad WARNING o CRITICAL. El destino es la entrada Standard, que inicia la hija. La regla está `DISABLED`. | `af-dev-incident-entry` y `af-dev-incident`. Las tareas usan la tabla regional, el catálogo comprimido en SSM Standard y los ajustes de la operación sintética. [Ensayo por operación](ensayo-lab/README.md) |
+| Diagnóstico, piezas y asignación | El workflow construye el request contractual de diagnóstico, reserva por componente y almacén de zona, y asigna técnico por especialidad, distancia y carga. | La cuenta usa diagnóstico por reglas y distancia en código. `available >= :n` y la reserva por incidente protegen el stock. [Contratos](../contracts/) · [Tareas](../services/incident_tasks/README.md) |
+| Avisos | La Lambda consulta `/af/notify/topics`. Los cinco roles apuntan al tópico regional del proyecto. | El tópico tenía cero suscripciones confirmadas en la inspección. El ensayo preventivo manual conserva un resumen dentro de la ejecución. [Notificaciones](../services/notify/README.md) |
+| Preventivo y detector | Corrida manual fijada a una máquina, operación y almacén sintéticos. Comprueba propiedad, última lectura y antigüedad. | `maintenance_trial_operation` vale `null` por defecto. [Módulo y pruebas](../infra/aws/maintenance/README.md) |
+| API y web | La primera etapa plantea GET de detalle y POST de acuse. Diez GET optativos sirven al dashboard. Cada ruta usa el JWT de Google y una concesión adecuada a la operación. | Google OAuth web, origen exacto, `AF_TABLE_NAME`, `AF_OPERATION_ID`. Cada permiso Lambda está limitado al origen API, stage, método y ruta. [Contrato](../contracts/api.md) · [Guía de API](../infra/aws/api/README.md) |
 
-| Función | Trigger | Timeout | Env |
-|---|---|---|---|
-| `af-dev-simulator` | Scheduler `rate(1 minute)` | 60 s | `AF_INGEST_MODE` (`iot`/`direct`), `AF_IOT_ENDPOINT` opcional, `AF_SIM_RAMP_SECONDS` (300), `AF_SIM_FAST_INTERVAL_SECONDS` (15), plan B: `AF_HEALTH_EVALUATOR_FUNCTION`, `AF_FIREHOSE_STREAM` |
-| `af-dev-fault-injector` | API `POST /simulator/faults` | 10 s | `AF_SIMULATOR_FUNCTION`, `AF_FAULT_GROUPS` opcional |
-| `af-dev-offline-detector` | Scheduler `rate(5 minutes)` | 30 s | `AF_TABLE_NAME`, `AF_OPERATIONS`, `AF_OFFLINE_AFTER_MINUTES` |
-| `af-dev-incident-tasks` | Step Functions | 30 s | `AF_TABLE_NAME`, `AF_INCIDENT_CATALOG` (opcional, p. ej. `/af/incident/fleet-catalog`; si falta usa `/af/sim/fleet-config`) |
-| `af-dev-assign-technician` | Step Functions | 30 s | `AF_TABLE_NAME`, `AF_ROUTE_CALCULATOR` opcional |
-| `af-dev-notify` | Step Functions | 30 s | `AF_TABLE_NAME` |
-| `af-dev-api` (hoy `af-dev-api-ack`, handler `handler.handler`) | API Gateway (todas las rutas menos `/simulator/faults`) | 15 s | `AF_TABLE_NAME`, `AF_OPERATION_ID` (MINA-NORTE, para `GET /parts`). Empaquetado y permisos: `services/api/README.md` |
+## Secuencia para el ensayo
 
-Login (decisión #42, sin Cognito): el autorizador JWT del HTTP API usa issuer `https://accounts.google.com` y
-audience = Client ID de OAuth de GCP. Los roles se cargan en DynamoDB con `scripts/seed_grants.py` (el `sub` de cada
-cuenta de Google aparece en el claim `sub`; si no tiene permiso, la API responde 403 `NO_GRANT`). `af-dev-fault-injector`
-usa los mismos permisos (necesita `AF_TABLE_NAME`).
+1. Preparar un kit local con `python scripts/ensayo_kit.py --run 7 --out build/ensayo-0007`. Elegir una corrida libre para el ensayo real. Cada miembro accede con su propio `sub`. Sebastián vincula al técnico del kit con su `techId`.
+2. La telemetría v1.0 conserva su `messageId` y contexto. El evaluador persiste `PROFILE` y `READING#` y respeta los atributos que usa el flujo de incidentes. El código nuevo incluye una outbox por anomalía recuperable. La deduplicación de la entrada protege contra un reenvío del mismo evento.
+3. En la espera adecuada, leer el detalle, revisar la asignación y confirmar ARRIVED. La web envía el ETag fuerte mediante `If-Match`. Repetir el procedimiento para la nueva espera RESOLVED. Un reintento conserva cuerpo y ETag. Un 412 requiere una nueva revisión humana.
+4. Verificar un mantenimiento, el consumo correcto de piezas, los recibos de ambas esperas y el cierre certificado por el workflow. El motor puede diagnosticar distintos componentes según medidas y nivel de riesgo. El kit fija datos de entrada para que la expectativa sea comprobable.
+5. Comprobar por separado la carga y el retorno del dato analítico. El preventivo usa `operatingHours` y `overuseHours` en el KPI y `forecastQty` en el pronóstico de stock. Conservar el job, identidad de lectura, agregado y clave retornada.
 
-Empaquetado: cada `services/<x>/` + `shared/af_shared/` en el mismo zip, más una capa con `pydantic>=2.7`.
-boto3 viene en el runtime. Powertools es opcional (si la capa está, el logger la usa).
-
-### Step Functions
-- `statemachines/incident.asl.json` y `preventive.asl.json` con `templatefile()`; variables
-  `incident_tasks_arn`, `assign_technician_arn`, `notify_arn`, `ai_diagnosis_arn`.
-- Regla de EventBridge (bus `af-dev-bus`) -> `af-dev-incident`:
-  ```json
-  { "source": ["arquifusion.health"], "detail-type": ["AnomalyDetected"], "detail": { "severity": ["WARNING", "CRITICAL"] } }
-  ```
-- Scheduler diario -> `af-dev-preventive` con input `{"operationId": "MINA-NORTE"}`.
-
-### Otros recursos
-- DynamoDB: GSI1 y GSI2 con proyección `ALL` (la API y los flujos leen atributos completos del índice).
-- 5 topics SNS (`af-dev-notify-operator`, `-technician`, `-maint-lead`, `-supervisor`, `-manager`) y sus ARN en SSM
-  `/af/notify/topics` como JSON `{"OPERATOR": "arn...", ...}`. En el lab, suscripciones por email para el video.
-- Amazon Location: un route calculator (`AF_ROUTE_CALCULATOR`) si el lab lo permite; si no, se usa haversine solo.
-- Parámetros SSM: los escribe `python scripts/seed_demo.py --demo` (`/af/sim/fleet-config` = el
-  `fleet-config.json` completo; tier `Intelligent-Tiering` por si pasa de 4 KB).
-
-## Para Rol 3
-
-1. **PROFILE:** tu health-evaluator usa UpdateItem y no toca `openIncidentId`, `openIncidentSK`,
-   `openIncidentSeverity` ni `lastMaintenanceHours`, así que no nos pisamos. El seed agrega `lastSeen`,
-   `maintenanceIntervalHours` y `fuelBatchId` (de la zona).
-2. **AnomalyDetected:** con un evento por escalamiento basta. Si llegan dos para la misma máquina, la segunda
-   ejecución termina en `DuplicateIgnored` (y si sube a CRITICAL, escala el incidente y avisa).
-3. **READING# sin `context`:** el health-evaluator no guarda `context` de la telemetría. Con `FUEL_BATCH_ZONE` el
-   simulador manda `fuelBatchId` = `<lote de la zona>-X`, pero el backend solo ve el lote de la zona. Si guardas
-   `context` en READING#, `get_profile` ya lo usa.
-4. **ai-diagnosis:** uso tu contrato tal cual (los tests corren tus `rules.py` con el request que arma la Step
-   Function, así que si cambias el contrato lo vemos al instante). Si la Lambda falla o tarda más de 45 s, la Step
-   Function usa un respaldo por reglas con la misma forma de respuesta.
-5. **`classify` en `rules.py`:** combustible + temperatura da `ENGINE`, pero el mock del frontend dice `FUEL_SYSTEM`
-   para `FUEL_BATCH_ZONE`. Con +5 °C la temperatura puede o no pasar z=2, así que el componente (y el repuesto
-   reservado) puede salir distinto según la lectura. ¿Lo dejamos en `FUEL_SYSTEM` cuando hay incidente de zona?
-6. **KPI# (bigquery-sync-back):** el preventivo usa `operatingHours` y `overuseHours`. **FORECAST#**: `forecastQty`.
-7. **Frontend:** la API responde con las formas de `frontend/src/api/types.ts` (hay un test que compara campo por
-   campo con ese archivo). Ejemplos en `contracts/examples/api/`.
-
-## Cambios respecto de la guía
-- La condición `qty - reserved >= :n` no es válida en DynamoDB (no hay aritmética en condiciones). El stock guarda
-  `available` y la reserva usa `available >= :n`; además `reservations.{incidentId}` la hace idempotente.
-- Los técnicos ocupados siguen siendo candidatos con penalización por cola (+15 por incidente), como dice la fórmula.
-
-## Demo (orden sugerido)
-```bash
-python scripts/seed_demo.py --demo                      # flota, stock, técnicos, timeouts cortos
-# inyectar falla (token de un usuario SUPERVISOR)
-curl -X POST "$API/simulator/faults" -H "Authorization: Bearer $TOKEN" \
-     -d '{"machineId":"EXC-0042","faultType":"BEARING_WEAR"}'
-# P11: todas las máquinas de la zona de TRK-0103 (Z3) con combustible contaminado
-curl -X POST "$API/simulator/faults" -H "Authorization: Bearer $TOKEN" -d '{"machineId":"TRK-0103","faultType":"FUEL_BATCH_ZONE"}'
-# técnico confirma llegada y cierre (o desde la web)
-curl -X POST "$API/machines/EXC-0042/incidents/$INC/ack" -H "Authorization: Bearer $TECH_TOKEN" -d '{"action":"ARRIVED"}'
-curl -X POST "$API/machines/EXC-0042/incidents/$INC/ack" -H "Authorization: Bearer $TECH_TOKEN" -d '{"action":"RESOLVED"}'
-```
+El ZIP regional incluye los módulos de cada servicio, `af_shared` y sus dependencias Linux de Python 3.12. El despliegue y las invocaciones reales se revisan por etapa. Las pruebas locales ejecutan el ASL y los contratos del checkout. [Suite integral](../services/api/tests/test_multicloud_rehearsal.py) · [Runbook de incidentes](ensayo-lab/README.md)

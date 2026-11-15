@@ -227,6 +227,68 @@ def test_revoked_grant_is_rejected_on_the_next_request(api, web) -> None:
     assert web.wf.calls == []
 
 
+@pytest.mark.parametrize("change", ["move", "remove"])
+def test_machine_ownership_change_before_receipt_prevents_callback(web, monkeypatch, change) -> None:
+    routes = sys.modules["routes"]
+    authorize = routes._authorize_ack
+
+    def change_machine_after_authorization(ctx, incident):
+        result = authorize(ctx, incident)
+        key = {"PK": "MACHINE#EXC-0042", "SK": "PROFILE"}
+        if change == "move":
+            web.h.table.update_item(
+                Key=key,
+                UpdateExpression="SET operationId = :op",
+                ExpressionAttributeValues={":op": "MINA-SUR"},
+            )
+        else:
+            web.h.table.delete_item(Key=key)
+        return result
+
+    monkeypatch.setattr(routes, "_authorize_ack", change_machine_after_authorization)
+    status, body, _ = web.post()
+    assert (status, body["error"]["code"]) == (403, "OTHER_OPERATION")
+    assert web.wf.calls == [] and receipts(web) == [] and "ARRIVED" not in events(web)
+
+
+def test_receipt_transaction_checks_machine_ownership_with_native_dynamodb(web, monkeypatch):
+    from unittest.mock import Mock
+
+    from af_shared.ddb import to_ddb
+    from boto3.dynamodb.conditions import Key
+    from moto import mock_aws
+    from test_multicloud_rehearsal import rehearsal_table
+
+    routes = sys.modules["routes"]
+    write = routes.transact_write
+    claims = as_user(web.h.table, "TECHNICIAN", "MINA-NORTE", "T-07")
+    seen = web.etag()
+    event = request(web.api, web.h, "POST", web.path() + "/ack", claims, {"action": "ARRIVED"}, seen)
+    with mock_aws():
+        table = rehearsal_table("us-east-1")
+        for row in web.h.table.items.values():
+            table.put_item(Item=to_ddb(row))
+
+        def relocate_before_write(current, actions):
+            current.update_item(
+                Key={"PK": "MACHINE#EXC-0042", "SK": "PROFILE"},
+                UpdateExpression="SET operationId = :op",
+                ExpressionAttributeValues={":op": "MINA-SUR"},
+            )
+            write(current, actions)
+
+        monkeypatch.setattr(routes, "transact_write", relocate_before_write)
+        workflow = Mock()
+        response = web.api.route(event, table, workflow, NOW)
+        assert response["statusCode"] == 403 and json.loads(response["body"])["error"]["code"] == "OTHER_OPERATION"
+        workflow.send_task_success.assert_not_called()
+        found = table.query(
+            KeyConditionExpression=Key("PK").eq("MACHINE#EXC-0042") & Key("SK").begins_with("ACK#"),
+            ConsistentRead=True,
+        )
+        assert found["Items"] == []
+
+
 # ------------------------------------------------------------------------------------ version of the wait
 def test_if_match_is_required_and_must_be_the_current_wait(web) -> None:
     status, body, _ = web.post(if_match=None)

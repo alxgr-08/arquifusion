@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from af_shared import keys
-from af_shared.ddb import get_table, is_conditional_failure, iso
+from af_shared.ddb import get_table, is_conditional_failure, iso, parse_iso
 from af_shared.log import get_logger
 
 logger = get_logger("offline-detector")
@@ -37,35 +37,54 @@ def machines(table: Any, operation_id: str) -> list[dict[str, Any]]:
             return out
 
 
+def mark_if_stale(
+    table: Any,
+    operation_id: str,
+    machine: dict[str, Any],
+    now: datetime,
+    after_minutes: float,
+    *,
+    run: str | None = None,
+) -> bool:
+    cutoff = now - timedelta(minutes=after_minutes)
+    seen = machine.get("lastSeen")
+    if machine.get("status") == "OFFLINE" or (seen and parse_iso(seen) >= cutoff):
+        return False
+    machine_id = machine["PK"].removeprefix("MACHINE#")
+    index = keys.machine_gsi1(operation_id, "OFFLINE", machine_id)
+    values: dict[str, Any] = {":off": "OFFLINE", ":sk": index["GSI1SK"], ":group": index["GSI1PK"], ":at": iso(now)}
+    names = {"#st": "status"}
+    conditions = ["GSI1PK = :group", "(attribute_not_exists(#st) OR #st <> :off)"]
+    if seen:
+        conditions.append("lastSeen = :seen")
+        values[":seen"] = seen
+    else:
+        conditions.append("attribute_not_exists(lastSeen)")
+    if run is not None:
+        conditions.append("operationId = :op AND machineId = :id AND zoneId = :zone AND #run = :run")
+        values.update({":op": operation_id, ":id": machine_id, ":zone": machine["zoneId"], ":run": run})
+        names["#run"] = "run"
+    try:
+        table.update_item(
+            Key=keys.machine_profile(machine_id),
+            UpdateExpression="SET #st = :off, GSI1SK = :sk, offlineSince = :at",
+            ConditionExpression=" AND ".join(conditions),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+        return True
+    except Exception as exc:
+        if not is_conditional_failure(exc):
+            raise
+        return False
+
+
 def mark_offline(table: Any, operation_id: str, now: datetime, after_minutes: float) -> list[str]:
-    cutoff = iso(now - timedelta(minutes=after_minutes))
-    marked = []
-    for m in machines(table, operation_id):
-        if m.get("status") == "OFFLINE":
-            continue
-        seen = m.get("lastSeen")
-        if seen and seen >= cutoff:
-            continue
-        machine_id = m["PK"].removeprefix("MACHINE#")
-        gsi1sk = keys.machine_gsi1(operation_id, "OFFLINE", machine_id)["GSI1SK"]
-        values: dict[str, Any] = {":off": "OFFLINE", ":sk": gsi1sk, ":at": iso(now)}
-        condition = "attribute_not_exists(lastSeen)"
-        if seen:
-            condition = "lastSeen = :seen"
-            values[":seen"] = seen
-        try:
-            table.update_item(
-                Key=keys.machine_profile(machine_id),
-                UpdateExpression="SET #st = :off, GSI1SK = :sk, offlineSince = :at",
-                ConditionExpression=condition,
-                ExpressionAttributeNames={"#st": "status"},
-                ExpressionAttributeValues=values,
-            )
-            marked.append(machine_id)
-        except Exception as exc:
-            if not is_conditional_failure(exc):
-                raise
-    return marked
+    return [
+        machine["PK"].removeprefix("MACHINE#")
+        for machine in machines(table, operation_id)
+        if mark_if_stale(table, operation_id, machine, now, after_minutes)
+    ]
 
 
 def handler(event: dict[str, Any], context: object) -> dict[str, Any]:

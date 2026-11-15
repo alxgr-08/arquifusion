@@ -342,6 +342,13 @@ export class MockFleetApi implements FleetApi {
     return clone((this.readings.get(id) ?? []).filter((r) => Date.parse(r.timestamp) >= a && Date.parse(r.timestamp) <= b));
   }
 
+  async getIncident(machineId: string, incidentId: string) {
+    const incident = this.incidents.find((i) => i.machineId === machineId && i.incidentId === incidentId);
+    if (!incident) throw new Error(`Incident ${incidentId} not found`);
+    const waiting = incident.state === "ASSIGNED" || incident.state === "IN_PROGRESS";
+    return { incident: clone(incident), etag: waiting ? `"${incidentId}-${incident.state}"` : null };
+  }
+
   async getMachineIncidents(id: string) {
     return clone(this.incidents.filter((i) => i.machineId === id));
   }
@@ -371,9 +378,10 @@ export class MockFleetApi implements FleetApi {
     return seedKpis(date);
   }
 
-  async ackIncident(machineId: string, incidentId: string, action: "ARRIVED" | "RESOLVED") {
+  async ackIncident(machineId: string, incidentId: string, action: "ARRIVED" | "RESOLVED", etag?: string) {
     const incident = this.incidents.find((i) => i.incidentId === incidentId && i.machineId === machineId);
     if (!incident) throw new Error(`Incident ${incidentId} not found`);
+    if (etag && etag !== (await this.getIncident(machineId, incidentId)).etag) throw new Error("La espera cambió.");
     const machine = this.machines.get(machineId)!;
     const at = new Date(this.now).toISOString();
     incident.timeline.push({ at, event: action, tech: incident.assignedTech });

@@ -1,0 +1,21 @@
+{
+  "hosting": {
+    "target": "ensayo",
+    "public": "frontend/dist",
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**",
+      "**/*.map",
+      "**/*.json",
+      "**/*.pem",
+      "**/*.key",
+      "**/*.p12",
+      "**/*.pfx",
+      "**/*credentials*",
+      "**/*service-account*"
+    ],
+    "rewrites": [
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}

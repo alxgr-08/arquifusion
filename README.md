@@ -12,19 +12,11 @@ Serverless, multi-cloud platform (AWS + GCP) that turns heavy-machinery telemetr
 
 New here? Start with [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
 
-## Architecture (summary)
+## Arquitectura vigente
 
-```
-Simulator -> IoT Core -> IoT Rule -+-> Firehose -> S3 (Parquet) -> BigQuery + BQ ML (GCP) -> DynamoDB
-                                   +-> health-evaluator -> DynamoDB
-                                                        -> EventBridge (AnomalyDetected)
-                                                             -> Step Functions (incidents)
-                                                                  -> Bedrock · Location · SNS
-Frontend (S3 + CloudFront + Cognito) -> API Gateway -> Lambda -> DynamoDB
-Security: Secrets Manager · SSM Parameter Store · KMS · IAM
-```
+AWS Academy opera la telemetría e incidentes. Google Cloud analiza el histórico con BigQuery ML. El simulador direct alimenta el evaluador y el archivo Parquet. La API utiliza Google Sign-In, un JWT authorizer y concesiones por operación en DynamoDB. El recorrido manual de incidentes y la analítica con histórico sintético tienen evidencia independiente.
 
-Full diagram: `docs/architecture.png` (Rol 1).
+[Arquitectura, madurez por componente y ensayo pendiente](docs/arquitectura.md) · [Diagrama editable](docs/architecture.drawio) · [PNG](docs/architecture.png) · [Preparación actual de Rol 1](docs/rol1-listo-2026-11-15.md) · [Ensayo del 15/11](docs/revision-nocturna-2026-11-15.md)
 
 ## Repository layout
 

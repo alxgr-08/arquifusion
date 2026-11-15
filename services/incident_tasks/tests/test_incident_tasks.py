@@ -163,3 +163,78 @@ def test_route_matrix_is_used_when_available() -> None:
     assert (etas, method) == ([10.0, 1.0], "AMAZON_LOCATION")
     assert loc.of("calculate_route_matrix")[0]["DeparturePositions"][0] == [-70.4, -23.6]  # [lon, lat]
     assert assignment.eta_minutes(techs, (-23.65, -70.39), 25)[1] == "HAVERSINE"
+
+
+def test_latest_reading_compares_legacy_and_fractional_timestamps() -> None:
+    h = Harness()
+    pk = "MACHINE#ENS-4999"
+    for at, batch in [("12:00:00Z", "OLD"), ("12:00:00.100000Z", "NEW"), ("11:59:59.999999Z", "OLDER")]:
+        h.table.put_item(Item={"PK": pk, "SK": "READING#2026-11-15T" + at, "context": {"fuelBatchId": batch}})
+    assert incidents._latest_reading(h.table, "ENS-4999")["context"]["fuelBatchId"] == "NEW"
+    h.table.put_item(Item={"PK": pk, "SK": "READING#2026-11-15T12:00:01Z", "context": {"fuelBatchId": "NEXT"}})
+    assert incidents._latest_reading(h.table, "ENS-4999")["context"]["fuelBatchId"] == "NEXT"
+
+
+def test_claim_cannot_take_a_machine_owned_by_another_operation() -> None:
+    h = Harness()
+    event = anomaly_event()
+    key = {"PK": f"MACHINE#{event['detail']['machineId']}", "SK": "PROFILE"}
+    h.table.update_item(Key=key, UpdateExpression="SET operationId = :op", ExpressionAttributeValues={":op": "OTHER"})
+    before = dict(h.table.get_item(Key=key)["Item"])
+    with pytest.raises(incidents.TaskError, match="operation does not own"):
+        incidents.claim(h.table, {"event": event, "executionId": "foreign"}, NOW, {})
+    assert h.table.get_item(Key=key)["Item"] == before
+
+
+def test_late_escalation_cannot_recreate_a_released_or_deleted_profile() -> None:
+    h = Harness()
+    inc = claimed(h)
+    created(h, inc)
+    incidents.release_claim_only(h.table, inc)
+    key = {"PK": f"MACHINE#{inc['machineId']}", "SK": "PROFILE"}
+    incidents._escalate(h.table, inc["machineId"], inc["operationId"], inc["incidentSK"], "CRITICAL", 20, NOW)
+    assert "openIncidentSeverity" not in h.table.get_item(Key=key)["Item"]
+    h.table.delete_item(Key=key)
+    incidents._escalate(h.table, inc["machineId"], inc["operationId"], inc["incidentSK"], "CRITICAL", 20, NOW)
+    assert h.table.get_item(Key=key).get("Item") is None
+
+
+def test_repeated_escalation_appends_its_history_once() -> None:
+    h = Harness()
+    inc = claimed(h)
+    created(h, inc)
+    for _ in range(2):
+        incidents._escalate(h.table, inc["machineId"], inc["operationId"], inc["incidentSK"], "CRITICAL", 20, NOW)
+    row = h.table.get_item(Key={"PK": f"MACHINE#{inc['machineId']}", "SK": inc["incidentSK"]})["Item"]
+    assert row["severity"] == "CRITICAL"
+    assert sum(event["event"] == "ESCALATED" for event in row["timeline"]) == 1
+
+
+def test_maintenance_reset_replay_uses_the_original_recorded_hours_and_date() -> None:
+    h = Harness()
+    inc = claimed(h)
+    created(h, inc)
+    h.table.update_item(
+        Key={"PK": f"MACHINE#{inc['machineId']}", "SK": inc["incidentSK"]},
+        UpdateExpression="SET #st = :closed, closedAt = :at, closing = :closing",
+        ExpressionAttributeNames={"#st": "state"},
+        ExpressionAttributeValues={":closed": "RESOLVED", ":at": NOW, ":closing": {"resolvedAt": NOW}},
+    )
+    h.table.put_item(
+        Item={
+            "PK": f"MACHINE#{inc['machineId']}",
+            "SK": f"MAINT#{NOW[:10]}#MNT-{inc['incidentId']}",
+            "incidentId": inc["incidentId"],
+            "engineHours": 100,
+        }
+    )
+    key = {"PK": f"MACHINE#{inc['machineId']}", "SK": "PROFILE"}
+    incidents.update_machine_state(h.table, {"incident": inc}, NOW)
+    h.table.update_item(Key=key, UpdateExpression="SET engineHours = :hours", ExpressionAttributeValues={":hours": 140})
+    retry = incidents.update_machine_state(h.table, {"incident": inc}, "2026-11-14T14:07:00Z")
+    assert retry["lastMaintenanceHours"] == 100
+    assert h.table.get_item(Key=key)["Item"]["lastMaintenanceAt"] == NOW
+    h.table.update_item(Key=key, UpdateExpression="SET operationId = :op", ExpressionAttributeValues={":op": "OTHER"})
+    before = dict(h.table.get_item(Key=key)["Item"])
+    incidents.update_machine_state(h.table, {"incident": inc}, "2026-11-15T14:07:00Z")
+    assert h.table.get_item(Key=key)["Item"] == before

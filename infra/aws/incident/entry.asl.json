@@ -1,0 +1,65 @@
+{
+  "Comment": "Give each business event a stable Standard execution name. EventBridge owns the outer delivery ID.",
+  "QueryLanguage": "JSONata",
+  "StartAt": "WithinReplayWindow",
+  "States": {
+    "WithinReplayWindow": {
+      "Type": "Choice",
+      "Choices": [{
+        "Condition": "{% ($t := $toMillis($states.input.detail.detectedAt); $t >= $millis() - 2592000000 and $t <= $millis() + 300000) %}",
+        "Next": "IdentifyEvent"
+      }],
+      "Default": "OutsideReplayWindow"
+    },
+    "OutsideReplayWindow": {
+      "Type": "Fail",
+      "Error": "IncidentOutsideReplayWindow",
+      "Cause": "Review events older than 30 days or more than five minutes in the future."
+    },
+    "IdentifyEvent": {
+      "Type": "Pass",
+      "Assign": {
+        "event": "{% {'source': $states.input.source, 'detail-type': $lookup($states.input, 'detail-type'), 'detail': $states.input.detail} %}",
+        "executionName": "{% ($d := $states.input.detail; $signals := [$d.signals.{'metric': metric, 'value': value, 'baseline': baseline, 'zScore': zScore, 'trend': trend}]; $hash($string([$d.schemaVersion, $d.operationId, $d.machineId, $d.zoneId, $d.model, $d.detectedAt, $d.severity, $d.healthScore, $signals, $d.comparedAgainst]), 'SHA-256')) %}"
+      },
+      "Next": "StartIncident"
+    },
+    "StartIncident": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution",
+      "Arguments": {
+        "StateMachineArn": "${incident_arn}",
+        "Input": "{% $event %}",
+        "Name": "{% $executionName %}"
+      },
+      "Retry": [{
+        "ErrorEquals": ["StepFunctions.ExecutionLimitExceeded", "States.Timeout"],
+        "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2, "JitterStrategy": "FULL"
+      }],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "VerifyEarlierStart"}],
+      "End": true
+    },
+    "VerifyEarlierStart": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:sfn:describeExecution",
+      "Arguments": {"ExecutionArn": "{% '${execution_prefix}' & $executionName %}"},
+      "Assign": {"sameEvent": "{% $parse($states.result.Input) = $event and $states.result.Status in ['RUNNING', 'SUCCEEDED'] %}"},
+      "Retry": [{
+        "ErrorEquals": ["States.TaskFailed", "States.Timeout"],
+        "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2, "JitterStrategy": "FULL"
+      }],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "DispatchFailed"}],
+      "Next": "CheckEarlierExecution"
+    },
+    "CheckEarlierExecution": {
+      "Type": "Choice",
+      "Choices": [{"Condition": "{% $sameEvent %}", "Next": "AlreadyDispatched"}],
+      "Default": "DispatchFailed"
+    },
+    "AlreadyDispatched": {"Type": "Succeed"},
+    "DispatchFailed": {
+      "Type": "Fail", "Error": "IncidentDispatchFailed",
+      "Cause": "Inspect the named execution and input before redrive."
+    }
+  }
+}

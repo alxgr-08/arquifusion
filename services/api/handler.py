@@ -8,7 +8,6 @@ POST /simulator/faults is served by af-dev-fault-injector, not here.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import routes
@@ -33,8 +32,10 @@ def route(event: dict[str, Any], table: Any, sfn: Any, now: str) -> dict[str, An
     try:
         (_, _, fn, allowed, status), params = routes.match(method, path)
         ctx = routes.Ctx(table, sfn, now, event, params)
-        if os.environ.get("AF_AUTH_DISABLED") != "true":
+        if grants.auth_required():
             ctx.principal = grants.load(table, event)
+            if not ctx.principal.grants:
+                raise ApiError(403, "NO_GRANT", "This account has no access to ArquiFusion")
             grants.require(ctx.principal, allowed, routes.operation_of(ctx))
         result = fn(ctx)
         if isinstance(result, Reply):

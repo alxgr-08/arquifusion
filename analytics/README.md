@@ -3,11 +3,11 @@
 BigQuery + BigQuery ML (GCP): the analytical half of the platform. Results flow back to DynamoDB through
 `services/bigquery_sync_back`, so the second cloud adds value in both directions.
 
-## Pipeline (run in order; daily as BigQuery scheduled queries)
+## Pipeline manual en el proyecto del equipo
 
 | File | Output | What | Problem |
 |---|---|---|---|
-| `sql/00_setup.sql` | datasets, `af_lake.*` | Reference DDL (Rol 1 owns it in Terraform) | — |
+| `sql/00_setup.sql` | datasets, `af_lake.*` | DDL del equipo. Terraform conserva los datasets ya creados y solo prepara staging optativo. | — |
 | `sql/10_daily_kpis.sql` | `af_out.daily_kpis` | Utilization, idle/overuse hours, tons, L/t vs model, cost per productive hour | P6, P7 |
 | `sql/20_model_baselines.sql` | `af_out.model_baselines` | Healthy mean/std per model and metric (fleet reference for the health score) | P1, P8 |
 | `sql/30_fuel_anomalies.sql` | `af_ml.fuel_lpt_arima`, `af_out.fuel_anomalies`, `af_out.fuel_trends` | ARIMA_PLUS + `ML.DETECT_ANOMALIES` on daily L/t; progressive increase trend | P6 |
@@ -28,7 +28,7 @@ PROJECT=<gcp-project> ./analytics/load_synthetic.sh 60   # generate + load af_la
 PROJECT=<gcp-project> ./analytics/run_pipeline.sh         # run all SQL, prints top failure precursors
 ```
 
-The BigQuery sandbox (no billing account) supports all of the above, including BigQuery ML.
+El equipo ejecutó el pipeline con cargas por lotes. Revisar cuota, expiración, permisos de jobs y alcance de cada script antes de repetirlo. La carga sintética y los scripts de reconstrucción escriben datos; el ensayo del puente usa un lote identificable. [Arquitectura y evidencia](../docs/arquitectura.md)
 
 ## Tests
 

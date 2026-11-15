@@ -10,16 +10,15 @@ Problems are tagged P1–P13 (see README). If a feature is not visible in the 5-
 ## Hard rules
 - 100% serverless: no EC2, RDS or always-on containers.
 - Two clouds must be used with data flowing both ways (AWS <-> GCP BigQuery).
-- No secrets in code or prompts. Config in SSM Parameter Store (`/af/...`), credentials in Secrets Manager
-  (`af/gcp/service-account`), encryption with KMS (`alias/af-key`).
+- Keep secrets out of code, logs, Terraform and Vite. Use the existing LabRole and SSM for application configuration. The cross-cloud bridge requires an approved isolated identity.
 - Contracts in `contracts/` are the only dependency between roles. Never change a contract without team approval
   and a `schemaVersion` bump. Validate inputs/outputs with the pydantic models in `shared/af_shared`.
 
 ## Stack
 - Lambdas: Python 3.12, boto3, pydantic v2, pytest, ruff, Lambda Powertools Logger (structured JSON logs with machineId/incidentId).
-- Frontend: React + Vite + TypeScript, MapLibre + Amazon Location, Recharts.
+- Frontend: React + Vite + TypeScript, MapLibre, Recharts.
 - IaC: Terraform (AWS + GCP). Step Functions: ASL JSON in `statemachines/`.
-- Regions: us-east-1 (primary), us-west-2 (replica). BigQuery location US.
+- Regions: us-east-1 (regional Academy deployment). BigQuery location US.
 - Resource names: `af-{env}-{component}` (env = dev). Tags: project=arquifusion, env, owner.
 
 ## Conventions
@@ -34,6 +33,7 @@ Problems are tagged P1–P13 (see README). If a feature is not visible in the 5-
 | Machine | MACHINE#{id} | PROFILE | OP#{op}#MACHINE / {status}#{id} | |
 | Reading (TTL 48h, expiresAt) | MACHINE#{id} | READING#{ts} | | |
 | Incident | MACHINE#{id} | INCIDENT#{createdAt}#{incId} | OP#{op}#INCIDENT#{OPEN\|CLOSED} / {sevRank}#{createdAt} | ZONE#{op}#{zone} / {createdAt}#{id} |
+| Durable pending anomaly | MACHINE#{id} | OUTBOX#ANOMALY#{messageId} | OUTBOX#ANOMALY / see the health handler | |
 | Maintenance | MACHINE#{id} | MAINT#{date}#{mntId} | | |
 | Daily KPI | MACHINE#{id} | KPI#{date} | OP#{op}#KPI#{date} / {id} | |
 | Technician | TECH#{id} | PROFILE | OP#{op}#TECH / {availability}#{id} | |
@@ -52,18 +52,16 @@ sevRank: 1=CRITICAL, 2=WARNING, 3=WATCH.
 Thresholds: >=80 OK, 60–79 WATCH, 40–59 WARNING, <40 CRITICAL. Weights/thresholds in SSM `/af/health/*`.
 
 ## Ownership
-- Rol 1 (Leonardo): infra/, security, IAM, Cognito, Global Tables, S3 replication, lake-to-bigquery, stream-exporter,
-  CI/CD, diagram.
+- Rol 1 (Leonardo): Terraform, API Gateway, hosting, security, data bridge, CI and diagram.
 - Rol 2 (Sebastián): simulator, fault-injector, offline-detector, Step Functions, incident-tasks, assign-technician,
   notify, api-*.
 - Rol 3 (Alexis): health-evaluator, ai-diagnosis, analytics/ (BigQuery ML), bigquery-sync-back, frontend, pitch.
 
 ## AWS Academy (Learner Lab) constraints
-- IAM roles cannot be created: every Lambda, Step Function, IoT Rule, Firehose and Scheduler uses the existing
-  `LabRole` (Terraform variable `lab_role_arn`). Never generate `aws_iam_role` resources.
+- Use the existing `LabRole` for Lambda, Step Functions and Firehose. Scope API Gateway invocation by account, stage, method and route. The Academy design uses manual rehearsals with the incident rule disabled.
 - Session credentials expire (~4 h). Never hardcode them; refresh `~/.aws/credentials` from the lab "AWS Details".
 - Only us-east-1 and us-west-2 are available.
-- If a service is blocked (Bedrock, IoT Core, Location), use the plan B in docs/ONBOARDING.md.
+- Verify service availability by action in this Learner Lab. See [the current architecture](docs/arquitectura.md).
 
 ## Shared helpers
 - `af_shared.contracts`: pydantic models of the contracts.

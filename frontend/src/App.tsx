@@ -9,6 +9,7 @@ import { RoleContext } from "./lib/hooks";
 
 const FleetPage = lazy(() => import("./pages/FleetPage").then((m) => ({ default: m.FleetPage })));
 const IncidentsPage = lazy(() => import("./pages/IncidentsPage").then((m) => ({ default: m.IncidentsPage })));
+const IncidentPage = lazy(() => import("./pages/IncidentPage").then((m) => ({ default: m.IncidentPage })));
 const KpisPage = lazy(() => import("./pages/KpisPage").then((m) => ({ default: m.KpisPage })));
 const MachinePage = lazy(() => import("./pages/MachinePage").then((m) => ({ default: m.MachinePage })));
 const PartsPage = lazy(() => import("./pages/PartsPage").then((m) => ({ default: m.PartsPage })));
@@ -90,6 +91,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<FleetPage />} />
             <Route path="/machines/:machineId" element={<MachinePage />} />
+            <Route path="/machines/:machineId/incidents/:incidentId" element={<IncidentPage />} />
             <Route path="/incidents" element={<IncidentsPage />} />
             <Route path="/kpis" element={allowed.has("/kpis") ? <KpisPage /> : <Navigate to="/" />} />
             <Route path="/parts" element={allowed.has("/parts") ? <PartsPage /> : <Navigate to="/" />} />

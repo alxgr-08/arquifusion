@@ -1,2 +1,10 @@
-env          = "dev"
-lab_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/LabRole"
+expected_account_id = "<ACCOUNT_ID>"
+aws_profile         = "default"
+env                 = "dev"
+# Set the actual, verified execution role ARN when deploying Lambdas or orchestration.
+# lab_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/LabRole"
+
+# Optional review stages remain off by default.
+# prepare_manual_web_hosting = true
+# prepare_anomaly_outbox_consumer = true
+# maintenance_trial_operation = "ENSAYO-0007"

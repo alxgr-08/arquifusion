@@ -1,7 +1,7 @@
 # af-dev-offline-detector
 
 - **Owner:** Rol 2
-- **Trigger:** EventBridge Scheduler, `rate(5 minutes)`
+- **Trigger previsto en el diseño:** revisión cada cinco minutos. El laboratorio prepara una invocación manual aislada. No hay un programador del proyecto activo en el corte.
 - **Input -> output:** Machines whose `lastSeen` is older than `AF_OFFLINE_AFTER_MINUTES` (5) -> `status=OFFLINE`, `GSI1SK=OFFLINE#id`
 - **Problems:** P4
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from typing import Any
 
 from af_shared.ddb import from_ddb
@@ -33,7 +34,12 @@ class Reply:
 def respond(status: int, body: Any, headers: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "statusCode": status,
-        "headers": {"Content-Type": "application/json", **CORS, **(headers or {})},
+        # In Lambda the native HTTP API configuration owns CORS for the registered origin.
+        "headers": {
+            "Content-Type": "application/json",
+            **({} if os.getenv("AWS_LAMBDA_FUNCTION_NAME") else CORS),
+            **(headers or {}),
+        },
         "body": json.dumps(from_ddb(body), ensure_ascii=False),
     }
 

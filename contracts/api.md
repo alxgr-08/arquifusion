@@ -75,3 +75,7 @@ Generated from a real run of the incident flow: `contracts/examples/api/*.json`.
 ## Incident states
 `OPEN -> ASSIGNED -> IN_PROGRESS -> RESOLVED`. `timeline[]` only has DETECTED, ASSIGNED, ARRIVED, RESOLVED, ESCALATED;
 backend-only events (DIAGNOSED, PARTS_RESERVED, NOTIFIED, ACK_TIMEOUT, CLOSED...) are kept in `activity` and not returned.
+
+## Alcance en AWS Academy
+
+Se mantiene la interfaz v1.2. La variante de ensayo publica únicamente las rutas seleccionadas en Terraform. Las rutas de piezas respetan el `operationId` opcional de la consulta y el conjunto de almacenes autorizados; sin parámetro usan la operación configurada. Las rutas históricas solo devuelven filas cuya pertenencia a la operación esté acreditada. Para el acuse se admite un único ETag fuerte entre comillas. Se conserva la versión de la espera durante los reintentos. [Preparación local de la API](../infra/aws/api/README.md)

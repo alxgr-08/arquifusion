@@ -2,8 +2,8 @@
 
 | File | Name | Trigger |
 |---|---|---|
-| `incident.asl.json` | `af-dev-incident` | EventBridge rule: `source = arquifusion.health`, `detail-type = AnomalyDetected`, `detail.severity = [WARNING, CRITICAL]` |
-| `preventive.asl.json` | `af-dev-preventive` | EventBridge Scheduler daily, input `{"operationId": "MINA-NORTE"}` |
+| `incident.asl.json` | `af-dev-incident` | La entrada Standard inicia esta hija. La regla de anomalías WARNING/CRITICAL está DISABLED. En Academy se probó el inicio manual. |
+| `preventive.asl.json` | `af-dev-preventive` | Definición del equipo. La prueba de Academy se prepara para una operación sintética y una ejecución manual. |
 
 Placeholders filled by Terraform `templatefile()`: `${incident_tasks_arn}`, `${assign_technician_arn}`,
 `${notify_arn}`, `${ai_diagnosis_arn}`. Execution role: `LabRole` (needs lambda:InvokeFunction).

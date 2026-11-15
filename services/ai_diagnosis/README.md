@@ -33,3 +33,5 @@ Permissions: Bedrock model invocation (LabRole in Academy). Memory 512 MB.
 ```bash
 python -m pytest -q services/ai_diagnosis
 ```
+
+En el despliegue de Academy se seleccionó `AF_AI_PROVIDER=rules`. La evidencia de BigQuery ML corresponde al histórico analítico. La invocación de Bedrock requiere disponibilidad y permisos propios. [Arquitectura](../../docs/arquitectura.md)

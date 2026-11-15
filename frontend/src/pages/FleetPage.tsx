@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, OPERATION } from "../api";
+import { api, IS_MOCK, OPERATION } from "../api";
 import type { FaultType } from "../api/types";
 import { HealthBar, SeverityBadge, StatusBadge } from "../components/Badges";
 import { FleetMap } from "../components/FleetMap";
@@ -86,7 +86,7 @@ export function FleetPage() {
         </section>
       </div>
 
-      {(role === "MAINT_LEAD" || role === "SUPERVISOR") && (
+      {IS_MOCK && (role === "MAINT_LEAD" || role === "SUPERVISOR") && (
         <FaultInjector machineIds={list.map((m) => m.machineId)} onDone={machines.refresh} />
       )}
     </div>

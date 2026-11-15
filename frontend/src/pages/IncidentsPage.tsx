@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, OPERATION } from "../api";
+import { api, IS_MOCK, OPERATION } from "../api";
 import { IncidentCard } from "../components/IncidentCard";
 import { usePolling } from "../lib/hooks";
 
@@ -24,7 +24,7 @@ export function IncidentsPage() {
           <p className="zone banner">{zones.size} incidente(s) de zona activo(s): varias máquinas fallan en la misma zona.</p>
         )}
         {incidents.error && <p className="error">{incidents.error}</p>}
-        {list.length === 0 && <p className="muted card">Sin incidentes. Inyecta una falla desde la vista de Flota.</p>}
+        {!incidents.error && list.length === 0 && <p className="muted card">Sin incidentes.{IS_MOCK && " Puedes simular una falla en Flota."}</p>}
         {list.map((i) => (
           <IncidentCard key={i.incidentId} incident={i} onChange={incidents.refresh} />
         ))}

@@ -1,11 +1,12 @@
 """Pydantic models mirroring contracts/*.schema.json (v1.0)."""
 
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 
 class MachineStatus(StrEnum):
@@ -34,12 +35,16 @@ class _Strict(BaseModel):
 
 
 class Location(_Strict):
+    model_config = ConfigDict(strict=True, allow_inf_nan=False)
+
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     zone_id: str = Field(alias="zoneId")
 
 
 class Metrics(_Strict):
+    model_config = ConfigDict(strict=True, allow_inf_nan=False)
+
     engine_hours: float | None = Field(alias="engineHours", ge=0)
     temperature_c: float | None = Field(alias="temperatureC")
     vibration_mm_s: float | None = Field(alias="vibrationMmS", ge=0)
@@ -52,22 +57,53 @@ class Metrics(_Strict):
 
 
 class TelemetryContext(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True, allow_inf_nan=False)
+
     fuel_batch_id: str | None = Field(default=None, alias="fuelBatchId")
     ambient_temp_c: float | None = Field(default=None, alias="ambientTempC")
+
+    @field_validator("fuel_batch_id", "ambient_temp_c", mode="before")
+    @classmethod
+    def supplied_context_value(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("A supplied context property must have its declared type")
+        return value
 
 
 class Telemetry(_Strict):
     schema_version: Literal["1.0"] = Field(alias="schemaVersion")
     message_id: UUID = Field(alias="messageId")
     machine_id: str = Field(alias="machineId", pattern=r"^[A-Z]{2,5}-[0-9]{4}$")
-    operation_id: str = Field(alias="operationId")
+    operation_id: str = Field(alias="operationId", pattern=r"^[A-Z0-9-]+$")
     model: str
-    machine_type: str = Field(alias="machineType")
-    timestamp: datetime
+    machine_type: Literal[
+        "EXCAVATOR", "HAUL_TRUCK", "LOADER", "BULLDOZER", "DRILL", "GRADER", "CRANE", "TRACTOR", "GENERATOR"
+    ] = Field(alias="machineType")
+    timestamp: AwareDatetime
     location: Location
     status: Literal["OPERATING", "IDLE", "STOPPED", "MAINTENANCE"]
     metrics: Metrics
     context: TelemetryContext | None = None
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def utc_timestamp(cls, value: object) -> str | datetime:
+        if isinstance(value, datetime):
+            if value.utcoffset() is None:
+                raise ValueError("A telemetry timestamp needs a timezone")
+            return value.astimezone(UTC)
+        if not isinstance(value, str) or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z", value
+        ):
+            raise ValueError("A wire timestamp must be an RFC3339 UTC string ending in Z")
+        return value
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def supplied_context_object(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("A supplied context must be an object")
+        return value
 
 
 class Signal(_Strict):

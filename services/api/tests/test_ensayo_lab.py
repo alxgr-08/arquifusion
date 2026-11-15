@@ -3,17 +3,20 @@ real Step Function definition, the real Lambdas and the API Lambda invoked direc
 
 import json
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from af_shared.fakes import Recorder
-from boto3.dynamodb.types import TypeDeserializer
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "statemachines" / "tests"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import ensayo_kit  # noqa: E402
+import seed_ensayo  # noqa: E402
+from auth import as_user  # noqa: E402
+from conditional_seed import put_new  # noqa: E402
 from flow_harness import Harness  # noqa: E402
 
 NOW = "2026-11-16T15:30:00Z"
@@ -23,13 +26,6 @@ RUN = 7
 @pytest.fixture
 def kit() -> dict:
     return ensayo_kit.build(RUN, datetime(2026, 11, 16, 15, 0, tzinfo=UTC))
-
-
-def put(h: Harness, item: dict) -> None:
-    d = TypeDeserializer()
-    h.table.put_item(
-        Item={k: d.deserialize(v) for k, v in item.items()}, ConditionExpression="attribute_not_exists(PK)"
-    )
 
 
 def stock_outside_the_run(h: Harness) -> dict:
@@ -68,12 +64,21 @@ def api(load_handler):
     return load_handler("api")
 
 
-def lab_harness(kit: dict, case2: bool = False) -> Harness:
+def write_kit(kit: dict, folder: Path) -> Path:
+    folder.mkdir()
+    for name, content in kit.items():
+        (folder / name).write_text(json.dumps(content), encoding="utf-8")
+    return folder
+
+
+def lab_harness(kit: dict, tmp_path: Path | None = None, case2: bool = False) -> Harness:
+    """Same rows and the same conditional writer as `seed_ensayo.py --apply`.
+
+    Also used by test_multicloud_rehearsal.py as `lab_harness(kit, case2=True)`, without tmp_path."""
     h = Harness()
-    for name in ("item-op-settings.json", "item-machine.json", "item-technician.json", "item-grant-operador.json"):
-        put(h, kit[name])
-    if case2:
-        put(h, kit["item-stock-caso2.json"])
+    folder = (tmp_path or Path(tempfile.mkdtemp(prefix="af-kit-"))) / "kit"
+    rows = seed_ensayo.load_items(write_kit(kit, folder), with_stock=case2)
+    assert {s for s, _ in put_new(h.table, rows, apply=True)} == {"CREATED"}
     return h
 
 
@@ -91,8 +96,8 @@ def test_kit_ids_and_times_belong_to_the_run(kit) -> None:
     assert all(r["PK"] and r["SK"] for r in kit["run.json"]["rows"])
 
 
-def test_case1_vibration_warning_resolves_and_a_resent_event_opens_nothing(api, kit) -> None:
-    h = lab_harness(kit)
+def test_case1_vibration_warning_resolves_and_a_resent_event_opens_nothing(api, kit, tmp_path) -> None:
+    h = lab_harness(kit, tmp_path)
     before = stock_outside_the_run(h)
     params = dict(h.ssm.params)
     op = Operator(api, h, kit)
@@ -113,8 +118,8 @@ def test_case1_vibration_warning_resolves_and_a_resent_event_opens_nothing(api, 
     assert_released(h)
 
 
-def test_case2_bearing_consumes_only_the_run_warehouse(api, kit) -> None:
-    h = lab_harness(kit, case2=True)
+def test_case2_bearing_consumes_only_the_run_warehouse(api, kit, tmp_path) -> None:
+    h = lab_harness(kit, tmp_path, case2=True)
     before = stock_outside_the_run(h)
     runner, _ = h.run_incident(kit["anomaly-caso2-rodamiento.json"], Operator(api, h, kit))
     assert runner.visited[-1] == "Done"
@@ -126,3 +131,30 @@ def test_case2_bearing_consumes_only_the_run_warehouse(api, kit) -> None:
     maint = [i for (pk, sk), i in h.table.items.items() if pk == "MACHINE#ENS-0007" and sk.startswith("MAINT#")]
     assert len(maint) == 1
     assert_released(h)
+
+
+def test_web_sees_the_run_operation_and_seeding_again_changes_nothing(api, kit, tmp_path) -> None:
+    h = lab_harness(kit, tmp_path, case2=True)
+    claims = as_user(h.table, "SUPERVISOR", "ENSAYO-0007")
+
+    def get(path: str):
+        ctx = {"http": {"method": "GET"}, "authorizer": {"jwt": {"claims": claims}}}
+        query = {"operationId": "ENSAYO-0007"} if path == "/parts" else None
+        res = api.route(
+            {"rawPath": path, "queryStringParameters": query, "requestContext": ctx}, h.table, Recorder(), NOW
+        )
+        assert res["statusCode"] == 200, res["body"]
+        return json.loads(res["body"])
+
+    assert [m["machineId"] for m in get("/operations/ENSAYO-0007/machines")] == ["ENS-0007"]
+    assert [t["techId"] for t in get("/operations/ENSAYO-0007/technicians")] == ["T-E0007"]
+    parts = get("/parts")
+    assert [p["partId"] for p in parts] == ["BRG-SPH-22"]
+    assert [w["warehouseId"] for w in parts[0]["warehouses"]] == ["WH-E0007"]  # only the run's warehouse
+    before = dict(h.table.items)
+    again = put_new(h.table, seed_ensayo.load_items(tmp_path / "kit", with_stock=True), apply=True)
+    assert {s for s, _ in again} == {"SAME"} and h.table.items == before
+    other = {**kit["item-machine.json"], "operationId": {"S": "MINA-NORTE"}}
+    (tmp_path / "kit" / "item-machine.json").write_text(json.dumps(other), encoding="utf-8")
+    statuses = [status for status, _ in put_new(h.table, seed_ensayo.load_items(tmp_path / "kit"), apply=True)]
+    assert statuses.count("CONFLICT") == 1 and h.table.items == before  # reported, never overwritten

@@ -117,7 +117,7 @@ def apply(body: dict[str, Any], cfg: FleetConfig, faults: list[dict[str, Any]], 
 def handle(event: dict[str, Any], store: config.ParamStore, kick: Any = None, table: Any = None) -> dict[str, Any]:
     try:
         cfg = FleetConfig.model_validate(store.get_json(config.FLEET_CONFIG))
-        if os.environ.get("AF_AUTH_DISABLED") != "true":
+        if grants.auth_required():
             grants.require(
                 grants.load(table if table is not None else _table(), event), allowed_groups(), cfg.operation_id
             )

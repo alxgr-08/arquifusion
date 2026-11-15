@@ -9,8 +9,7 @@
   fallback with the ai-diagnosis response shape, create incident (Incident shape of the web), zone incident, atomic
   part reservation by `diagnosis.component` and zone warehouse, task tokens, close (downtime, parts, recurrence, MAINT#).
 - `preventive.py`: usage factor, due machines, preventive orders, restock plan with the BigQuery forecast.
-- Reads SSM `/af/sim/fleet-config` (parts, warehouses) and `/af/incident/settings` (timeouts;
-  `scripts/seed_demo.py --demo` shortens them).
+- In Academy the incident task package loads the compressed SSM catalog selected by `AF_INCIDENT_CATALOG`. Each synthetic operation can override settings and its warehouse in `OP#… / INCIDENT_SETTINGS`. The manual preventive trial scopes reads and writes to its kit. [Incident configuration](../../infra/aws/incident/README.md) · [Preventive trial](../../infra/aws/maintenance/README.md)
 
 ## How to test
 

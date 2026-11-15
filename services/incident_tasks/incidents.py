@@ -128,7 +128,7 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
         "openIncidentExecution = :ex, lastIncidentDetectedAt = :det",
         # lastIncidentDetectedAt: an alert re-published by the health-evaluator outbox (pendingAlert) after its
         # incident was already handled must not open a second incident.
-        ConditionExpression="attribute_exists(PK) AND attribute_not_exists(openIncidentId) "
+        ConditionExpression="attribute_exists(PK) AND operationId = :op AND attribute_not_exists(openIncidentId) "
         "AND (attribute_not_exists(lastIncidentDetectedAt) OR lastIncidentDetectedAt < :det)",
         ExpressionAttributeValues={
             ":id": incident_id,
@@ -136,6 +136,7 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
             ":sev": d.severity,
             ":ex": execution or "-",
             ":det": anomaly["detectedAt"],
+            ":op": d.operation_id,
         },
     ):
         return {**base, "duplicate": False, "escalated": False}
@@ -143,6 +144,8 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
     profile = table.get_item(Key=keys.machine_profile(d.machine_id), ConsistentRead=True).get("Item")
     if not profile:
         raise TaskError(f"Unknown machine {d.machine_id}")
+    if profile.get("operationId") != d.operation_id:
+        raise TaskError("Anomaly operation does not own the machine")
     if "openIncidentId" not in profile:  # replay of an alert that already had its incident
         return {**base, "duplicate": True, "escalated": False, "replayed": True}
     open_id, open_sk = profile["openIncidentId"], profile["openIncidentSK"]
@@ -170,22 +173,25 @@ def _escalate(table: Any, machine_id: str, op: str, incident_sk: str, severity: 
         Key=_incident_key(machine_id, incident_sk),
         UpdateExpression="SET severity = :sev, healthScore = :h, GSI1SK = :sk, aiDiagnosis.stopMachine = :stop, "
         "timeline = list_append(timeline, :ev)",
-        ConditionExpression="GSI1PK = :open",
+        ConditionExpression="GSI1PK = :open AND severity = :previous",
         ExpressionAttributeValues=to_ddb(
             {
                 ":sev": severity,
                 ":h": health,
                 ":open": f"OP#{op}#INCIDENT#OPEN",
+                ":previous": "WARNING",
                 ":stop": severity == "CRITICAL",
                 ":sk": keys.incident_gsi1(op, "OPEN", severity, created_at)["GSI1SK"],
                 ":ev": _event("ESCALATED", now),
             }
         ),
     )
-    table.update_item(
+    _ignore_conditional(
+        table.update_item,
         Key=keys.machine_profile(machine_id),
         UpdateExpression="SET openIncidentSeverity = :sev",
-        ExpressionAttributeValues={":sev": severity},
+        ConditionExpression="operationId = :op AND openIncidentSK = :sk AND openIncidentSeverity = :previous",
+        ExpressionAttributeValues={":sev": severity, ":op": op, ":sk": incident_sk, ":previous": "WARNING"},
     )
 
 
@@ -224,9 +230,12 @@ def _latest_reading(table: Any, machine_id: str) -> dict[str, Any] | None:
     res = table.query(
         KeyConditionExpression=Key("PK").eq(keys.machine_pk(machine_id)) & Key("SK").begins_with("READING#"),
         ScanIndexForward=False,
-        Limit=1,
+        # A legacy second-only key sorts after fractions of that same second.
+        # Reading the first two candidates includes the newest instant in either layout.
+        Limit=2,
     )
-    return from_ddb(res["Items"][0]) if res["Items"] else None
+    newest = max(res["Items"], key=lambda row: parse_iso(row["SK"].removeprefix("READING#")), default=None)
+    return from_ddb(newest) if newest else None
 
 
 def _clean(d: dict[str, Any]) -> dict[str, Any]:
@@ -841,6 +850,7 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
                     "PK": keys.machine_pk(inc["machineId"]),
                     "SK": keys.maintenance_sk(resolved_at[:10], maint_id),
                     "maintenanceId": maint_id,
+                    "operationId": inc["operationId"],
                     "type": "CORRECTIVE",
                     "date": resolved_at,
                     "incidentId": inc["incidentId"],
@@ -940,13 +950,30 @@ def clear_simulated_faults(store: Any, machine_id: str) -> None:
 def update_machine_state(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
     """After a corrective repair the usage counter for preventive maintenance restarts (P2)."""
     inc = payload["incident"]
-    res = table.update_item(
+    row = table.get_item(Key=_incident_key(inc["machineId"], inc["incidentSK"]), ConsistentRead=True).get("Item", {})
+    resolved_at = (row.get("closing") or {}).get("resolvedAt") or row.get("closedAt")
+    if not resolved_at or row.get("operationId") != inc["operationId"] or row.get("state") != "RESOLVED":
+        raise TaskError("Maintenance reset requires the resolved incident of this operation")
+    maintenance_id = row.get("maintenanceId") or f"MNT-{inc['incidentId']}"
+    maintenance = table.get_item(
+        Key={"PK": keys.machine_pk(inc["machineId"]), "SK": keys.maintenance_sk(resolved_at[:10], maintenance_id)},
+        ConsistentRead=True,
+    ).get("Item", {})
+    hours = maintenance.get("engineHours")
+    if hours is None or maintenance.get("incidentId") != inc["incidentId"]:
+        raise TaskError("The resolved incident has no recorded maintenance hours")
+    _ignore_conditional(
+        table.update_item,
         Key=keys.machine_profile(inc["machineId"]),
-        UpdateExpression="SET lastMaintenanceHours = if_not_exists(engineHours, lastMaintenanceHours), "
-        "lastMaintenanceAt = :now",
-        ConditionExpression="attribute_exists(PK)",
-        ExpressionAttributeValues={":now": now},
-        ReturnValues="ALL_NEW",
+        UpdateExpression="SET lastMaintenanceHours = :hours, lastMaintenanceAt = :at, lastMaintenanceId = :id",
+        ConditionExpression="attribute_exists(PK) AND operationId = :op "
+        "AND (attribute_not_exists(lastMaintenanceAt) OR lastMaintenanceAt < :at)",
+        ExpressionAttributeValues={
+            ":hours": hours,
+            ":at": resolved_at,
+            ":id": maintenance_id,
+            ":op": inc["operationId"],
+        },
     )
-    attrs = from_ddb(res.get("Attributes", {}))
-    return {"machineId": inc["machineId"], "lastMaintenanceHours": attrs.get("lastMaintenanceHours")}
+    profile = table.get_item(Key=keys.machine_profile(inc["machineId"]), ConsistentRead=True).get("Item", {})
+    return {"machineId": inc["machineId"], "lastMaintenanceHours": from_ddb(profile.get("lastMaintenanceHours"))}

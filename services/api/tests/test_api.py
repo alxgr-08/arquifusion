@@ -132,6 +132,7 @@ def test_read_endpoints_match_the_frontend_types(api) -> None:
                 "PK": "MACHINE#EXC-0042",
                 "SK": f"READING#{ts}",
                 "messageId": "m",
+                "operationId": "MINA-NORTE",
                 "status": "OPERATING",
                 "metrics": {"temperatureC": Decimal("92.4")},
                 "healthScore": 40,

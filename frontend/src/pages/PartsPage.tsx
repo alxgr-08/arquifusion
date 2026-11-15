@@ -1,4 +1,4 @@
-import { api } from "../api";
+import { api, OPERATION } from "../api";
 import { usePolling } from "../lib/hooks";
 import { irregular, stockStatus, type StockStatus } from "../lib/parts";
 
@@ -10,7 +10,7 @@ const STATUS_LABEL: Record<StockStatus, string> = {
 };
 
 export function PartsPage() {
-  const parts = usePolling(() => api.listParts(), 4000);
+  const parts = usePolling(() => api.listParts(OPERATION), 4000);
 
   return (
     <div className="page">

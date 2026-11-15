@@ -1,5 +1,7 @@
-bucket       = "af-dev-tfstate-<ACCOUNT_ID>"
-key          = "aws/terraform.tfstate"
-region       = "us-east-1"
-use_lockfile = true
-encrypt      = true
+bucket              = "af-dev-tfstate-<ACCOUNT_ID>"
+key                 = "aws/terraform.tfstate"
+region              = "us-east-1"
+profile             = "default"
+allowed_account_ids = ["<ACCOUNT_ID>"]
+use_lockfile        = true
+encrypt             = true

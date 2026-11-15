@@ -67,6 +67,32 @@ def _ddb(item: dict[str, Any]) -> dict[str, Any]:
 def items(i: dict[str, str], now: str) -> dict[str, dict[str, Any]]:
     op, wh = i["operation"], i["warehouse"]
     return {
+        # Operation metadata the web needs (GET /parts uses META.warehouses; zones for the map and filters)
+        "item-op-meta.json": {
+            "PK": f"OP#{op}",
+            "SK": "META",
+            "operationId": op,
+            "run": i["run"],
+            "zones": [i["zone"]],
+            "warehouses": [wh],
+        },
+        "item-op-zone.json": {
+            "PK": f"OP#{op}",
+            "SK": f"ZONE#{i['zone']}",
+            "zoneId": i["zone"],
+            "run": i["run"],
+            "name": f"Zona ensayo {i['run']}",
+            "lat": -23.601,
+            "lon": -69.978,
+            "fuelBatchId": f"FB-E{i['run']}",
+        },
+        "item-op-warehouse.json": {
+            "PK": f"OP#{op}",
+            "SK": f"WH#{wh}",
+            "warehouseId": wh,
+            "run": i["run"],
+            "zones": [i["zone"]],
+        },
         "item-op-settings.json": {
             "PK": f"OP#{op}",
             "SK": "INCIDENT_SETTINGS",
@@ -211,6 +237,27 @@ def build(run: int, now: datetime | None = None) -> dict[str, Any]:
     files["api-ack-resolved.json"] = http_event(
         i, "POST", "/ack", {"action": "RESOLVED", "notes": f"Ensayo {i['run']}"}
     )
+    files["grants-participantes.json"] = [  # fill in each person's Google `sub`; keep this file out of git
+        {
+            "sub": "<sub de Google>",
+            "label": "<nombre> (jefe de mantenimiento)",
+            "operationId": i["operation"],
+            "role": "MAINT_LEAD",
+        },
+        {
+            "sub": "<sub de Google>",
+            "label": "<nombre> (técnico asignado)",
+            "operationId": i["operation"],
+            "role": "TECHNICIAN",
+            "techId": i["tech"],
+        },
+        {
+            "sub": "<sub de Google>",
+            "label": "<nombre> (supervisor)",
+            "operationId": i["operation"],
+            "role": "SUPERVISOR",
+        },
+    ]
     files["run.json"] = {
         **i,
         "generatedAt": at1,

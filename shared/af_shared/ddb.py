@@ -82,21 +82,11 @@ def transact_write(table: Any, actions: list[dict[str, Any]]) -> None:
     Each action is {"ConditionCheck"|"Update"|"Put"|"Delete": {...}} without TableName. Raises the ClientError
     `TransactionCanceledException` if any condition fails (see `is_transaction_conditional_failure`).
     """
-    from boto3.dynamodb.types import TypeSerializer
-
-    ser = TypeSerializer()
-
-    def typed(values: dict[str, Any]) -> dict[str, Any]:
-        return {k: ser.serialize(to_ddb(v)) for k, v in values.items()}
-
+    # A Table resource registers boto3's AttributeValue serializer on its own client.
     items = []
     for action in actions:
         ((kind, spec),) = action.items()
-        spec = {**spec, "TableName": table.name}
-        for field in ("Key", "Item", "ExpressionAttributeValues"):
-            if field in spec:
-                spec[field] = typed(spec[field])
-        items.append({kind: spec})
+        items.append({kind: {**to_ddb(spec), "TableName": table.name}})
     table.meta.client.transact_write_items(TransactItems=items)
 
 

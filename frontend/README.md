@@ -1,6 +1,8 @@
 # frontend — owner: Rol 3
 
-React + Vite + TypeScript · MapLibre · Recharts. Hosted on S3 + CloudFront (Rol 1), sign-in with Google Identity Services.
+El cliente del acuse conserva el cuerpo y el ETag de la espera revisada al reintentar un 503, un fallo de red o un JSON de respuesta truncado después de un HTTP 200. Respeta `Retry-After`, limita los intentos y cancela el reintento si cambia la sesión. Los tests locales cubren esos casos y el build de producción pasó la comprobación de TypeScript.
+
+React + Vite + TypeScript · MapLibre · Recharts. Google Identity Services en modo live. Amplify Hosting es el destino elegido, pendiente de despliegue. [Arquitectura](../docs/arquitectura.md)
 
 ## Run
 
@@ -10,7 +12,7 @@ npm install
 cp .env.example .env.local   # VITE_API_MODE=mock by default
 npm run dev                  # http://localhost:5173
 npm test
-npm run build                # dist/ -> S3
+npm run build                # dist/ para alojar la SPA
 ```
 
 ## Modes
@@ -36,9 +38,8 @@ to inject faults on load. Fault types: `BEARING_WEAR`, `OVERHEATING`, `HYDRAULIC
 The role selector only changes the view (sections and the incident message for that role); it grants no access.
 The API authorizes each request with the grants stored in DynamoDB (#42).
 
-## Needed from other roles
+## Integración del ensayo
 
-- Rol 2: response examples in `contracts/examples/api/` (shapes proposed in `src/api/types.ts`) and a
-  `GET /parts` list endpoint (or `/parts/{partId}/stock` for each part).
-- Rol 1: Cognito user pool id + client id, API URL, Amazon Location map style URL (`VITE_MAP_STYLE_URL`),
-  S3 + CloudFront for hosting.
+Leonardo entrega el endpoint con stage y el origen HTTPS. Alexis registra ese origen en el cliente web de Google. Sebastián verifica las concesiones por operación, rol y asignación del técnico. Verificar por separado qué rutas de lectura están publicadas para cada pantalla. [Contrato](../contracts/api.md)
+
+La ruta de la SPA `/machines/{id}/incidents/{incId}` permite ensayar con solo las dos rutas HTTP de incidente. **Revisar espera y asignación** obtiene el detalle y su ETag antes de habilitar llegada o resolución. Un 503 conserva cuerpo y versión. Un 412 exige revisar la nueva espera. Para el dashboard se requieren las diez lecturas optativas. La inyección de fallas desde la web corresponde al modo simulado.
