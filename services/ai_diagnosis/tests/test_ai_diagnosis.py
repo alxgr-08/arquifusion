@@ -70,6 +70,14 @@ def test_zone_incident_detects_shared_fuel_batch() -> None:
     assert_contract(result.model_dump(mode="json", by_alias=True))
 
 
+def test_zone_fuel_batch_overrides_engine_with_fuel_system() -> None:
+    payload = request([("fuelRateLph", 2.5), ("temperatureC", 2.2)], zone=True)
+    result = rules.diagnose(DiagnosisRequest.model_validate(payload))
+    assert result.diagnosis.component == "FUEL_SYSTEM"
+    assert "FB-1120" in result.zone_analysis.common_cause
+    assert_contract(result.model_dump(mode="json", by_alias=True))
+
+
 def test_zone_incident_same_model_without_fuel_batch() -> None:
     payload = copy.deepcopy(REQUEST)
     payload.pop("context")

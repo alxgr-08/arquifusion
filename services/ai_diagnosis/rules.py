@@ -77,6 +77,20 @@ def classify(strong: set[str]) -> tuple[str, str]:
     return "UNKNOWN", "LOW"
 
 
+def shared_fuel_batch(req: DiagnosisRequest) -> tuple[str | None, int]:
+    """Most common fuel batch in the zone (this machine included) if it explains the zone incident."""
+    others = req.zone_correlation
+    if len(others) < ZONE_MIN_OTHERS:
+        return None, 0
+    total = len(others) + 1
+    own_batch = req.context.fuel_batch_id if req.context else None
+    batches = Counter(m.fuel_batch_id for m in others if m.fuel_batch_id)
+    if own_batch:
+        batches[own_batch] += 1
+    batch, count = batches.most_common(1)[0] if batches else (None, 0)
+    return (batch, count) if batch and count >= max(3, total * 0.6) else (None, 0)
+
+
 def analyze_zone(req: DiagnosisRequest) -> ZoneAnalysis | None:
     others = req.zone_correlation
     if len(others) < ZONE_MIN_OTHERS:
@@ -85,12 +99,8 @@ def analyze_zone(req: DiagnosisRequest) -> ZoneAnalysis | None:
     total = len(others) + 1
     evidence = [f"{total} máquinas con incidentes en {a.zone_id} en las últimas 2 h"]
 
-    own_batch = req.context.fuel_batch_id if req.context else None
-    batches = Counter(m.fuel_batch_id for m in others if m.fuel_batch_id)
-    if own_batch:
-        batches[own_batch] += 1
-    batch, count = batches.most_common(1)[0] if batches else (None, 0)
-    if batch and count >= max(3, total * 0.6):
+    batch, count = shared_fuel_batch(req)
+    if batch:
         evidence.append(f"{count} de {total} usan el lote de combustible {batch}")
         return ZoneAnalysis(
             isZoneIncident=True, commonCause=f"Posible lote de combustible contaminado {batch}.", evidence=evidence
@@ -153,6 +163,8 @@ def diagnose(req: DiagnosisRequest) -> DiagnosisResult:
     a = req.anomaly
     strong = {s.metric for s in a.signals if s.z_score >= STRONG_Z} or {max(a.signals, key=lambda s: s.z_score).metric}
     component, confidence = classify(strong)
+    if "fuelRateLph" in {s.metric for s in a.signals} and shared_fuel_batch(req)[0]:
+        component, confidence = "FUEL_SYSTEM", "HIGH"  # contaminated batch explains fuel + temperature (P11)
     cause, action, minutes = PLAYBOOK[component]
 
     recurrence = [h for h in req.history if h.type == "INCIDENT"]

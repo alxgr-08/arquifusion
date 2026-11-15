@@ -32,8 +32,8 @@ Weights and thresholds are overridable from SSM `/af/health/weights` and `/af/he
 
 1. Validate the payload against `contracts/telemetry` (invalid -> logged and dropped, no retry).
 2. Read `PROFILE` and `MODEL#{model} BASELINE`, run `scoring.evaluate`.
-3. One transaction: put `READING#{ts}` (TTL `expiresAt` = ts + 48 h, `attribute_not_exists(SK)` drops MQTT duplicates)
-   and update `PROFILE` (condition `lastSeen < ts` drops out-of-order readings; `GSI1SK` only rewritten on status change).
+3. One transaction: put `READING#{ts}` (TTL `expiresAt` = ts + 48 h, `attribute_not_exists(SK)` drops MQTT duplicates;
+   keeps the telemetry `context`, e.g. `fuelBatchId`) and update `PROFILE` (condition `lastSeen < ts` drops out-of-order readings; `GSI1SK` only rewritten on status change).
 4. If severity rose into WARNING/CRITICAL, publish `AnomalyDetected` (validated with `af_shared`) to the event bus.
 
 The profile update only SETs its own attributes, so fields owned by Rol 2 (`openIncidentSK`, `lastMaintenanceHours`)
