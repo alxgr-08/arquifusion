@@ -230,9 +230,12 @@ def _latest_reading(table: Any, machine_id: str) -> dict[str, Any] | None:
     res = table.query(
         KeyConditionExpression=Key("PK").eq(keys.machine_pk(machine_id)) & Key("SK").begins_with("READING#"),
         ScanIndexForward=False,
-        Limit=1,
+        # A legacy second-only key sorts after fractions of that same second.
+        # Reading the first two candidates includes the newest instant in either layout.
+        Limit=2,
     )
-    return from_ddb(res["Items"][0]) if res["Items"] else None
+    newest = max(res["Items"], key=lambda row: parse_iso(row["SK"].removeprefix("READING#")), default=None)
+    return from_ddb(newest) if newest else None
 
 
 def _clean(d: dict[str, Any]) -> dict[str, Any]:

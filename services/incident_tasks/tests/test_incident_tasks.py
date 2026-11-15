@@ -165,6 +165,16 @@ def test_route_matrix_is_used_when_available() -> None:
     assert assignment.eta_minutes(techs, (-23.65, -70.39), 25)[1] == "HAVERSINE"
 
 
+def test_latest_reading_compares_legacy_and_fractional_timestamps() -> None:
+    h = Harness()
+    pk = "MACHINE#ENS-4999"
+    for at, batch in [("12:00:00Z", "OLD"), ("12:00:00.100000Z", "NEW"), ("11:59:59.999999Z", "OLDER")]:
+        h.table.put_item(Item={"PK": pk, "SK": "READING#2026-11-15T" + at, "context": {"fuelBatchId": batch}})
+    assert incidents._latest_reading(h.table, "ENS-4999")["context"]["fuelBatchId"] == "NEW"
+    h.table.put_item(Item={"PK": pk, "SK": "READING#2026-11-15T12:00:01Z", "context": {"fuelBatchId": "NEXT"}})
+    assert incidents._latest_reading(h.table, "ENS-4999")["context"]["fuelBatchId"] == "NEXT"
+
+
 def test_claim_cannot_take_a_machine_owned_by_another_operation() -> None:
     h = Harness()
     event = anomaly_event()
