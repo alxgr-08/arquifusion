@@ -1,4 +1,4 @@
-"""DynamoDB single-table key builders (table af-{env}-arquifusion). Source of truth: CLAUDE.md."""
+"""DynamoDB single-table key builders (table af-{env}-arquifusion)."""
 
 SEV_RANK = {"CRITICAL": 1, "WARNING": 2, "WATCH": 3, "OK": 4}
 

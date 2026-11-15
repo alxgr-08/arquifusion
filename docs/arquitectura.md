@@ -41,4 +41,4 @@ El estado remoto de la aplicación contiene **60 recursos administrados** y una 
 
 El ensayo de regresión usa clientes reales boto3 con DynamoDB y S3 simulados, el intérprete del ASL de Sebastián, el motor de diagnóstico por reglas, claims de prueba y el cliente simulado de BigQuery. Sigue la misma telemetría, alerta, llegada, resolución, reserva, mantenimiento, fila de lago y KPI. La repetición comprueba que quedan dos recibos, una pieza consumida, un mantenimiento y un KPI. La respuesta analítica del test es un fixture controlado. El entrenamiento real de BigQuery ML se acreditó por separado en GCP. [Ensayo de extremo a extremo](../services/api/tests/test_multicloud_rehearsal.py)
 
-[Relevo actual, despliegues, evidencias y siguientes planes](revision-nocturna-2026-11-15.md) · [Corte anterior](informe-final-2026-11-15.md)
+[Relevo actual, despliegues, evidencias y siguientes planes](revision-nocturna-2026-11-15.md)
