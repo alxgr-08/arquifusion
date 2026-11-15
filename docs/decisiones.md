@@ -12,3 +12,4 @@
 | 2026-11-14 | Simulator fast loop (10 s) for machines with an injected fault | Health score needs 3 consecutive readings; 1/min is too slow for the demo |
 | 2026-11-14 | Rol 2 adopts Rol 3 contracts: fleet-config.json, ai-diagnosis-*, frontend/src/api/types.ts | One source of truth for the web, the history and the backend |
 | 2026-11-14 | Incident `timeline` only holds the 5 events the web shows; other events go to `activity` | The web labels only DETECTED, ASSIGNED, ARRIVED, RESOLVED, ESCALATED |
+| 2026-11-15 | health-evaluator keeps `pendingAlert` in PROFILE until EventBridge accepts AnomalyDetected | A Lambda retry after a committed reading was skipped as duplicate and the alert was lost |

@@ -97,8 +97,13 @@ def state_from_profile(profile: dict[str, Any] | None) -> MachineState:
     )
 
 
-def persist(msg: Telemetry, profile: dict[str, Any] | None, ev: Evaluation) -> bool:
-    """Atomically store the reading and update the profile. False if duplicate or out of order."""
+def persist(
+    msg: Telemetry, profile: dict[str, Any] | None, ev: Evaluation, alert: AnomalyDetected | None = None
+) -> bool:
+    """Atomically store the reading and update the profile. False if duplicate or out of order.
+
+    With `alert`, the profile also keeps `pendingAlert` (outbox) until EventBridge accepts the event.
+    """
     ts = _iso(msg.timestamp)
     metrics = msg.metrics.model_dump(by_alias=True)
     reading = {
@@ -149,6 +154,12 @@ def persist(msg: Telemetry, profile: dict[str, Any] | None, ev: Evaluation) -> b
         sets.append("engineHours = :hours")
     else:
         values.pop(":hours")
+    if alert:
+        sets.append("pendingAlert = :alert")
+        values[":alert"] = {
+            "alertId": str(msg.message_id),
+            "detail": alert.detail.model_dump(mode="json", by_alias=True),
+        }
     if not profile or profile.get("status") != msg.status:  # GSI1SK only changes with status (fewer index writes)
         sets += ["GSI1PK = :gpk", "GSI1SK = :gsk"]
         gsi = keys.machine_gsi1(msg.operation_id, msg.status, msg.machine_id)
@@ -218,6 +229,33 @@ def publish(event: AnomalyDetected) -> None:
         raise RuntimeError(f"EventBridge rejected AnomalyDetected: {response['Entries']}")
 
 
+def clear_pending_alert(machine_id: str, alert_id: str) -> None:
+    try:
+        _table().update_item(
+            Key=keys.machine_profile(machine_id),
+            UpdateExpression="REMOVE pendingAlert",
+            ConditionExpression="pendingAlert.alertId = :id",
+            ExpressionAttributeValues={":id": alert_id},
+        )
+    except ClientError as err:
+        if err.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+
+
+def flush_pending_alert(profile: dict[str, Any] | None) -> None:
+    """Re-publish an alert whose publication failed after its transaction committed (retry or next reading).
+
+    Safe to repeat: the incident Step Function claims PROFILE conditionally and ends in DuplicateIgnored.
+    """
+    pending = (profile or {}).get("pendingAlert")
+    if not pending:
+        return
+    event = AnomalyDetected.model_validate({"detail": pending["detail"]})
+    publish(event)
+    clear_pending_alert(event.detail.machine_id, pending["alertId"])
+    logger.warning("Pending AnomalyDetected re-published", extra={"alertId": pending["alertId"]})
+
+
 def process(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         msg = Telemetry.model_validate(payload)
@@ -227,6 +265,7 @@ def process(payload: dict[str, Any]) -> dict[str, Any]:
 
     logger.append_keys(machineId=msg.machine_id)
     profile, fleet = load_context(msg.machine_id, msg.model)
+    flush_pending_alert(profile)
     ev = evaluate(
         msg.metrics.model_dump(by_alias=True),
         state_from_profile(profile),
@@ -234,13 +273,14 @@ def process(payload: dict[str, Any]) -> dict[str, Any]:
         status=msg.status,
         config=load_config(),
     )
-    if not persist(msg, profile, ev):
+    event = build_event(msg, ev, datetime.now(UTC)) if ev.should_emit else None
+    if not persist(msg, profile, ev, event):
         logger.info("Duplicate or out-of-order reading skipped")
         return {"result": "SKIPPED"}
 
-    if ev.should_emit:
-        event = build_event(msg, ev, datetime.now(UTC))
+    if event:
         publish(event)
+        clear_pending_alert(msg.machine_id, str(msg.message_id))
         logger.warning("AnomalyDetected published", extra={"severity": ev.severity, "healthScore": ev.health_score})
 
     return {"result": "OK", "healthScore": ev.health_score, "severity": ev.severity, "emitted": ev.should_emit}
