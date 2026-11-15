@@ -111,6 +111,10 @@ def persist(msg: Telemetry, profile: dict[str, Any] | None, ev: Evaluation) -> b
         "severity": ev.severity,
         "expiresAt": int((msg.timestamp + READING_TTL).timestamp()),
     }
+    if msg.context:
+        context = msg.context.model_dump(by_alias=True, exclude_none=True)
+        if context:
+            reading["context"] = context
 
     values: dict[str, Any] = {
         ":model": msg.model,

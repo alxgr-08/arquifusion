@@ -96,6 +96,7 @@ def test_first_reading_creates_profile_and_reading(aws) -> None:
     )
     assert len(readings) == 1
     assert readings[0]["expiresAt"] == int((START + timedelta(hours=48)).timestamp())
+    assert readings[0]["context"]["fuelBatchId"] == "FB-1120"
 
 
 def test_duplicate_message_is_skipped(aws) -> None:
