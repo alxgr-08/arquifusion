@@ -1,6 +1,8 @@
 # Arquitectura y estado de ArquiFusion
 
-ArquiFusion ayuda a decidir cuándo detener una máquina, qué pieza reservar y a quién asignar la reparación. AWS Academy Learner Lab opera incidentes en `us-east-1`. Google Cloud analiza un histórico sintético de la flota en BigQuery. El corte del 15 de noviembre de 2026, a las 17:51 de Lima, precede al ensayo web conjunto. [Draw.io editable](architecture.drawio) · [SVG](architecture.svg) · [PNG para Canvas](architecture.png)
+ArquiFusion ayuda a decidir cuándo detener una máquina, qué pieza reservar y a quién asignar la reparación. AWS Academy Learner Lab opera incidentes en `us-east-1`. Google Cloud analiza un histórico sintético de la flota en BigQuery. La lámina del 15 de noviembre de 2026 muestra el estado previo al ensayo web conjunto. [PNG para Canvas](architecture.png) · [JPG original](architecture.jpg)
+
+El diagrama técnico complementario organiza los mismos recorridos por componente y conserva su fuente editable. [Draw.io](architecture.drawio) · [SVG](architecture.svg)
 
 ## Qué se puede demostrar
 
