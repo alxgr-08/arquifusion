@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { sessionFromIdToken } from "./auth";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const NOW = 1_800_000_000;
+const CLIENT_ID = "test-web-client.apps.googleusercontent.com";
+let sessionFromIdToken: typeof import("./auth")["sessionFromIdToken"];
 
 function jwt(claims: Record<string, unknown>): string {
   const b64 = (o: unknown) =>
@@ -13,8 +14,19 @@ function jwt(claims: Record<string, unknown>): string {
 }
 
 describe("sessionFromIdToken", () => {
+  beforeEach(async () => {
+    vi.stubEnv("VITE_GOOGLE_CLIENT_ID", CLIENT_ID);
+    vi.resetModules();
+    ({ sessionFromIdToken } = await import("./auth"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
   it("reads email, name and expiry from a valid token", () => {
-    const token = jwt({ email: "tech@example.com", name: "Técnico Uno", exp: NOW + 3600 });
+    const token = jwt({ email: "tech@example.com", name: "Técnico Uno", exp: NOW + 3600, aud: CLIENT_ID });
     expect(sessionFromIdToken(token, NOW)).toEqual({
       idToken: token,
       email: "tech@example.com",
@@ -23,9 +35,19 @@ describe("sessionFromIdToken", () => {
     });
   });
 
+  it("rejects a token without the configured client audience", () => {
+    expect(sessionFromIdToken(jwt({ email: "a@b.c", exp: NOW + 3600 }), NOW)).toBeUndefined();
+  });
+
+  it("rejects a token issued for another client", () => {
+    const token = jwt({ email: "a@b.c", exp: NOW + 3600, aud: "another-client.apps.googleusercontent.com" });
+    expect(sessionFromIdToken(token, NOW)).toBeUndefined();
+  });
+
   it("rejects expired or about-to-expire tokens", () => {
-    expect(sessionFromIdToken(jwt({ email: "a@b.c", exp: NOW - 1 }), NOW)).toBeUndefined();
-    expect(sessionFromIdToken(jwt({ email: "a@b.c", exp: NOW + 30 }), NOW)).toBeUndefined();
+    for (const exp of [NOW - 1, NOW + 30, NOW + 60]) {
+      expect(sessionFromIdToken(jwt({ email: "a@b.c", exp, aud: CLIENT_ID }), NOW)).toBeUndefined();
+    }
   });
 
   it("rejects malformed tokens", () => {

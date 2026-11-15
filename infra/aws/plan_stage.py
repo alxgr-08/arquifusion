@@ -17,6 +17,7 @@ from infra.aws.api import review_plan as review  # noqa: E402
 
 AWS = ROOT / "infra/aws"
 ORIGIN = "https://demo.d2ygcm34t8aku9.amplifyapp.com"
+GOOGLE_ORIGIN_CONFIRMATION = "https://github.com/alxgr-08/arquifusion/issues/41#issuecomment-6897046368"
 STAGES = {
     "base": {},
     "api-closed": {
@@ -24,6 +25,14 @@ STAGES = {
         "enable_fleet_read_routes": True,
         "ack_google_web_client_id": review.CLIENT,
         "ack_frontend_origin": ORIGIN,
+    },
+    "api-open": {
+        "enable_incident_api": True,
+        "enable_fleet_read_routes": True,
+        "open_incident_api_endpoint": True,
+        "ack_google_web_client_id": review.CLIENT,
+        "ack_frontend_origin": ORIGIN,
+        "operation_id": "ENSAYO-0001",
     },
     "outbox-disabled": {"prepare_anomaly_outbox_consumer": True},
     "lake-archive": {"enable_telemetry_lake": True, "enable_stream_exporter": True},
@@ -46,9 +55,12 @@ EXPORTER = {
 }
 
 
-def options(account, stage):
+def options(account, stage, *, google_origin_confirmed=False):
     review.require(
         stage in STAGES and len(account) == 12 and account.isascii() and account.isdecimal(), "Invalid stage or account"
+    )
+    review.require(
+        stage != "api-open" or google_origin_confirmed, "Review the Google origin confirmation before opening"
     )
     return {
         "expected_account_id": account,
@@ -70,10 +82,23 @@ def options(account, stage):
     }
 
 
-def check_additions(data, stage):
-    if stage in ("base", "api-closed"):
-        enabled = stage == "api-closed"
-        result = review.review(data, enabled=enabled, fleet_reads=enabled, origin=ORIGIN, existing_hosting=True)
+def check_additions(data, stage, *, google_origin_confirmed=False):
+    if stage in ("base", "api-closed", "api-open"):
+        enabled = stage != "base"
+        endpoint_open = stage == "api-open"
+        review.require(
+            not endpoint_open or google_origin_confirmed, "Review the Google origin confirmation before opening"
+        )
+        if endpoint_open:
+            review.require(data["variables"]["operation_id"]["value"] == "ENSAYO-0001", "Unexpected demo operation")
+        result = review.review(
+            data,
+            enabled=enabled,
+            endpoint_open=endpoint_open,
+            fleet_reads=enabled,
+            origin=ORIGIN,
+            existing_hosting=True,
+        )
         review.require(result["add"] == (31 if enabled else 0) and result["change"] == 0, "Unexpected API/base changes")
         return result
     review.require(data.get("complete") is True and not data.get("errored"), "Incomplete plan")
@@ -151,8 +176,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True, help="A new directory under build/")
     parser.add_argument("--terraform", default=shutil.which("terraform"))
     parser.add_argument("--aws", default=shutil.which("aws"))
+    parser.add_argument(
+        "--google-origin-confirmed",
+        action="store_true",
+        help="Acknowledge the owner confirmation in #41; permits preparing the authenticated open API plan only",
+    )
     args = parser.parse_args()
-    flags = options(args.account, args.stage)
+    flags = options(args.account, args.stage, google_origin_confirmed=args.google_origin_confirmed)
     review.require(args.terraform and args.aws, "Provide the installed Terraform and AWS CLI executables")
     output = args.output.resolve()
     review.require(
@@ -236,7 +266,7 @@ def main():
     )
     data = json.loads(terraform("show", "-json", candidate))
     review.check_plan_config(candidate)
-    result = check_additions(data, args.stage)
+    result = check_additions(data, args.stage, google_origin_confirmed=args.google_origin_confirmed)
     review.require(
         result["noOp"] == 29 and result["change"] == result["destroy"] == 0, "Existing resources are not preserved"
     )
@@ -255,6 +285,8 @@ def main():
         state=before,
         applyExecuted=False,
     )
+    if args.stage == "api-open":
+        result["googleOriginConfirmation"] = GOOGLE_ORIGIN_CONFIRMATION
     plan.with_suffix(".review.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(f"Plan: {result['add']} to add, 0 to change, 0 to destroy; 29 no-op")
     print(result["sha256"])

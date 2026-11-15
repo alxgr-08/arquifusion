@@ -43,14 +43,50 @@ def sample(monkeypatch):
     }
 
 
-def test_stages_never_open_http_or_disable_existing_hosting():
+def test_stages_preserve_hosting_and_only_explicit_rehearsal_opens_http():
     for name in stage.STAGES:
-        flags = stage.options("975050277936", name)
+        flags = stage.options("975050277936", name, google_origin_confirmed=name == "api-open")
         assert flags["prepare_manual_web_hosting"] is True
-        assert flags["open_incident_api_endpoint"] is False
+        assert flags["open_incident_api_endpoint"] is (name == "api-open")
         assert flags["bridge_wif"] is None
         assert flags["incident_test_operation_id"] is None
     assert stage.options("975050277936", "api-closed")["enable_fleet_read_routes"] is True
+
+
+def test_open_api_requires_owner_confirmation_and_pins_the_demo_operation():
+    with pytest.raises(ValueError, match="Google origin confirmation"):
+        stage.options("975050277936", "api-open")
+    flags = stage.options("975050277936", "api-open", google_origin_confirmed=True)
+    assert flags["operation_id"] == "ENSAYO-0001"
+    assert flags["ack_frontend_origin"] == stage.ORIGIN
+    assert flags["ack_google_web_client_id"] == stage.review.CLIENT
+
+
+def test_open_plan_rejects_another_operation_before_reviewing_resources():
+    data = {"variables": {"operation_id": {"value": "MINA-NORTE"}}}
+    with pytest.raises(ValueError, match="Google origin confirmation"):
+        stage.check_additions(data, "api-open")
+    with pytest.raises(ValueError, match="Unexpected demo operation"):
+        stage.check_additions(data, "api-open", google_origin_confirmed=True)
+
+
+def test_open_plan_still_requires_the_complete_jwt_review(monkeypatch):
+    observed = {}
+
+    def verify(data, **kwargs):
+        observed.update(kwargs)
+        return {"add": 31, "change": 0}
+
+    monkeypatch.setattr(stage.review, "review", verify)
+    data = {"variables": {"operation_id": {"value": "ENSAYO-0001"}}}
+    stage.check_additions(data, "api-open", google_origin_confirmed=True)
+    assert observed == {
+        "enabled": True,
+        "endpoint_open": True,
+        "fleet_reads": True,
+        "origin": stage.ORIGIN,
+        "existing_hosting": True,
+    }
 
 
 @pytest.mark.parametrize("account", ["1", "abcdefghijkl", "٩٧٥٠٥٠٢٧٧٩٣٦"])

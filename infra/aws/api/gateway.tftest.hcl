@@ -223,3 +223,29 @@ run "open_dashboard_rehearsal" {
     error_message = "The open dashboard must retain JWT on every route and expose only the contracted ACK as a write."
   }
 }
+
+run "confirmed_google_origin_and_agreed_web_operation" {
+  command = plan
+  variables {
+    prepare_manual_web_hosting = true
+    enable_incident_api        = true
+    open_incident_api_endpoint = true
+    enable_fleet_read_routes   = true
+    operation_id               = "ENSAYO-0001"
+    ack_google_web_client_id   = "197823740796-dkck6esc7b5o6gaemr4vv3eu9v79emki.apps.googleusercontent.com"
+    ack_frontend_origin        = "https://demo.d2ygcm34t8aku9.amplifyapp.com"
+  }
+  assert {
+    condition = (
+      !aws_apigatewayv2_api.ack[0].disable_execute_api_endpoint &&
+      length(aws_apigatewayv2_route.ack) == 12 &&
+      alltrue([for r in aws_apigatewayv2_route.ack : r.authorization_type == "JWT"]) &&
+      aws_lambda_function.ack[0].environment[0].variables["AF_OPERATION_ID"] == "ENSAYO-0001" &&
+      one(aws_apigatewayv2_api.ack[0].cors_configuration).allow_origins ==
+      toset(["https://demo.d2ygcm34t8aku9.amplifyapp.com"]) &&
+      aws_cloudwatch_event_rule.incident.state == "DISABLED" &&
+      length(aws_amplify_app.web) == 1 && length(aws_amplify_branch.demo) == 1
+    )
+    error_message = "The agreed live rehearsal must keep all routes authenticated, its operation/origin exact, hosting present and incident automation disabled."
+  }
+}

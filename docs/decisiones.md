@@ -57,7 +57,7 @@ En aquella versión una publicación fallida tras la transacción podía perders
 
 Leonardo confirmó Google Identity Services y el autorizador JWT nativo de API Gateway HTTP como arquitectura definitiva de esta fase. AWS Academy es el entorno operativo, con perfil `default`, región `us-east-1` y máximo educativo de diez entornos Lambda concurrentes compartidos. La identidad verificada se vincula a concesiones de operación y rol en DynamoDB. TECHNICIAN requiere coincidencia exacta con el técnico asignado. El diseño excluye Cognito.
 
-El plan de nueve altas fue una revisión previa a los PR #47 y #49. El diseño actual publica el GET del incidente y su confirmación por POST. El backend obtiene el permiso desde DynamoDB, exige el `ETag` de la espera en `If-Match` y mantiene recibos para los reintentos. El cliente Google registrado permite `http://localhost:5173`; queda pendiente registrar el origen HTTPS de la web. [Revisión de Sebastián](https://github.com/alxgr-08/arquifusion/pull/49) · [Arquitectura vigente](./arquitectura.md)
+El plan de nueve altas fue una revisión previa a los PR #47 y #49. El diseño actual publica el GET del incidente y su confirmación por POST. El backend obtiene el permiso desde DynamoDB, exige el `ETag` de la espera en `If-Match` y mantiene recibos para los reintentos. Alexis confirmó el origen HTTPS `https://demo.d2ygcm34t8aku9.amplifyapp.com`, además de localhost para desarrollo. [Confirmación de #41](https://github.com/alxgr-08/arquifusion/issues/41#issuecomment-6897046368) · [Arquitectura vigente](./arquitectura.md)
 
 ## Origen de los datos y evidencia multicloud
 
@@ -75,3 +75,9 @@ Se autorizaron y aplicaron cinco paquetes y el ASL (0/6/0), más una actualizaci
 
 El plan autorizado de Amplify creó únicamente la app WEB `af-dev-arquifusion-web` y la rama manual `demo` (2/0/0), con origen `https://demo.d2ygcm34t8aku9.amplifyapp.com`. El estado pasó a 29 recursos, sin drift ni publicación del frontend. La API completa se prepara cerrada con 12 rutas JWT (31/0/0, 29 no-op) mientras Alexis confirma el origen Google. Los planes anteriores al hosting requieren regeneración. El lago y los consumidores siguen sin desplegar. [Preparación actual sin nuevas escrituras cloud](rol1-listo-2026-11-15.md)
 | 2026-11-15 | Seeds are conditional: `seed_ensayo.py` / `seed_demo.py` create only absent rows, report `CONFLICT`, and write SSM only on request | Shared table and Terraform-managed parameters must never be overwritten by a seed (review of #50) |
+
+## Cierre posterior a main #51–54 y API
+
+El corte de 29 recursos y los planes cerrados anteriores son históricos. Tras la confirmación del origen de Google, Leonardo autorizó aplicar exclusivamente `api-open.tfplan` (`87F604A64FDBB40E592D04164D2030918F165798E66A60BCA5DFC5E6C79116BB`), con 31 altas y ningún cambio o borrado de los 29 existentes. La API abierta mantiene autenticación JWT para las doce rutas y `ENSAYO-0001` como operación del ensayo. El estado pasa a 60 recursos y EventBridge sigue deshabilitado. Los planes alternativos anteriores requieren regeneración conservando API y hosting.
+
+La creación de infraestructura no autoriza automáticamente sembrar datos, conceder acceso a participantes, publicar la web o escribir en GCP. `af_bridge_stage` ya fue confirmado por Alexis; su creación queda deshabilitada en el ejemplo Terraform y no se adopta su estado sin coordinación. El relevo distingue las comprobaciones propias de las reportadas por el propietario. [Estado, pruebas y responsabilidades del cierre](cierre-rol1-2026-11-15.md)

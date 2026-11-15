@@ -1,0 +1,13 @@
+# Public review profile after the Google origin confirmation in #41.
+# Creates the authenticated API; no apply is authorized by this file.
+expected_account_id        = "975050277936"
+aws_profile                = "default"
+region                     = "us-east-1"
+env                        = "dev"
+prepare_manual_web_hosting = true
+enable_incident_api        = true
+enable_fleet_read_routes   = true
+open_incident_api_endpoint = true
+operation_id               = "ENSAYO-0001"
+ack_google_web_client_id   = "197823740796-dkck6esc7b5o6gaemr4vv3eu9v79emki.apps.googleusercontent.com"
+ack_frontend_origin        = "https://demo.d2ygcm34t8aku9.amplifyapp.com"

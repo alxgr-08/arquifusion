@@ -19,7 +19,7 @@ La API queda fuera del plan por defecto. Incluirla prepara dos rutas de incident
 
 ## Cliente y origen
 
-El cliente web público confirmado en #41 es `197823740796-dkck6esc7b5o6gaemr4vv3eu9v79emki.apps.googleusercontent.com`. El único origen confirmado es `http://localhost:5173`, limitado a `dev`. Para un sitio público se requiere registrar con ese cliente el origen HTTPS exacto y usar el mismo valor en Terraform. [Issue del cliente web](https://github.com/alxgr-08/arquifusion/issues/41)
+El cliente web público confirmado en #41 es `197823740796-dkck6esc7b5o6gaemr4vv3eu9v79emki.apps.googleusercontent.com`. Alexis confirmó el registro de `https://demo.d2ygcm34t8aku9.amplifyapp.com` y mantiene `http://localhost:5173` para desarrollo. La API del ensayo admite únicamente ese origen HTTPS. [Confirmación del propietario](https://github.com/alxgr-08/arquifusion/issues/41#issuecomment-6897046368)
 
 El autorizador comprueba el JWT de Google contra `https://accounts.google.com` y la audiencia registrada. El handler usa `iss` y `sub` del contexto para consultar `GRANT#<iss>#<sub> / OP#<operación>`. La transacción del POST comprueba la concesión y la espera. Las cuentas de prueba y sus concesiones se preparan durante el ensayo autorizado. [Revisión de #49](./revision-ack.md) · [Autorización de API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html) · [Código de concesiones](../../../shared/af_shared/grants.py)
 
@@ -50,6 +50,23 @@ ack_frontend_origin      = "http://localhost:5173"
 | Además `enable_fleet_read_routes = true` | Diez lecturas adicionales, doce rutas y 31 recursos de API en total. Este interruptor es independiente de la apertura. |
 
 `incident_api_base_url` identifica el stage. Para cerrar un ensayo ya desplegado, preparar un plan con `enable_incident_api = true`, las mismas rutas y `open_incident_api_endpoint = false`. El resumen debe mostrar el cierre del endpoint. La aplicación de cada plan requiere la autorización de Leonardo.
+
+## Ensayo acordado y despliegue del 15/11
+
+El perfil público [ensayo-0001.tfvars.example](ensayo-0001.tfvars.example) conserva Amplify y configura la API con las doce rutas JWT para la operación `ENSAYO-0001`. La autorización de Leonardo permitió aplicar exclusivamente el plan guardado `api-open.tfplan`, con SHA-256 `87F604A64FDBB40E592D04164D2030918F165798E66A60BCA5DFC5E6C79116BB`: **31 altas, 0 cambios y 0 bajas; los 29 recursos anteriores sin cambios**. Su URL real es `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`. La regla de incidentes permanece deshabilitada. [Relevo del cierre y comprobaciones](../../../docs/cierre-rol1-2026-11-15.md)
+
+El endpoint exige JWT incluso mientras faltan los datos del ensayo y las concesiones reales. La API usa `ENSAYO-0001`; los usuarios necesitan una concesión para esa operación, y TECHNICIAN debe corresponder a `T-E0001`. No reutilizar automáticamente permisos de `MINA-NORTE`. La preparación offline usa los scripts de Sebastián y rechaza plantillas de participantes incompletas:
+
+```powershell
+python infra/aws/incident/preflight_web_demo.py prepare --kit build/ensayo-0001
+python infra/aws/incident/preflight_web_demo.py check --kit build/ensayo-0001
+# Solo con una ruta privada indicada expresamente por el propietario:
+python infra/aws/incident/preflight_web_demo.py check --kit build/ensayo-0001 --require-real-grants --grants-file <ruta-privada>
+```
+
+Estos comandos no consultan AWS ni crean concesiones. Validar la estructura de un `sub` tampoco demuestra que pertenezca a la persona; eso se comprueba mediante su login Google. La consulta remota de colisiones y cualquier siembra son pasos distintos. El seed condicional puede crear filas anteriores antes de encontrar un conflicto posterior: exigir un preflight sin conflictos y conciliar antes de repetir.
+
+Después de esta alta hay **60 recursos administrados**. Conservar las opciones de API, hosting, origen y operación del perfil en todos los planes posteriores. La copia local `api-open.auto.tfvars.json` está excluida de Git. Los planes alternativos guardados contra 29 recursos quedaron obsoletos; `plan_stage.py` los bloquea por inventario hasta que se adapte su revisión a la nueva base. Nunca aplicar un plan que proponga retirar la API por usar los valores por defecto.
 
 `review_plan.py` compara el HCL del plan guardado con el checkout. En el modo histórico controla las 27 direcciones originales. Después de crear Amplify se debe añadir `--existing-hosting`: exige que las 29 direcciones existentes permanezcan en no-op y verifica la propiedad, cuenta, región, relación app/rama y origen del hosting manual. También controla los cinco paquetes de Lambda, el workflow, la regla desactivada y las direcciones exactas de la API. Exige que el estado del endpoint, las rutas JWT y el origen coincidan con la intención del revisor. En un stage ya creado admite cambios de apertura/CORS, de ráfaga y de código de la API dentro de ese alcance. Coteja el ZIP con el hash del plan y los módulos de `services/api` y `shared/af_shared`. El resumen `.review.json` contiene conteos, rutas, direcciones y hashes. El JSON completo de Terraform se procesa en memoria.
 

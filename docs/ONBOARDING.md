@@ -1,6 +1,6 @@
 # Onboarding de ArquiFusion
 
-Comienza por la [arquitectura vigente y las responsabilidades](arquitectura.md), [contratos](../contracts/README.md) y [decisiones](decisiones.md). Las ramas de trabajo conservan cambios locales. Consulta GitHub y revisa el diff frente a `origin/main` antes de integrar.
+Comienza por el [relevo actual de Rol 1](cierre-rol1-2026-11-15.md), la [arquitectura por componente](arquitectura.md), [contratos](../contracts/README.md) y [decisiones](decisiones.md). Las ramas de trabajo conservan cambios locales. Consulta GitHub y revisa el diff frente a `origin/main` antes de integrar.
 
 ## Desarrollo local
 
@@ -18,7 +18,7 @@ npm --prefix frontend test -- --run
 npm --prefix frontend run build
 ```
 
-El frontend usa `mock` por defecto. Para el ensayo autorizado utiliza `live`, el client ID público, el origen registrado y la URL de la API con stage. Los datos de demo y los cambios de contrato se revisan con el equipo. En desarrollo, los servicios se prueban con fakes/moto sin sesión cloud.
+El frontend usa `mock` por defecto. Para el ensayo autorizado utiliza `live`, el client ID público, el origen Amplify ya confirmado en Google y la URL real de la API con stage. La operación acordada es `ENSAYO-0001`; su kit está preparado pero aún no se sembró y los grants reales no se cargaron. En desarrollo, los servicios se prueban con fakes/moto sin sesión cloud. Los tokens y secretos no pertenecen a las variables Vite.
 
 ## Operación
 
@@ -26,4 +26,8 @@ Leonardo conserva el backend Terraform exclusivo y el estado separado del bootst
 
 La autoría se encuentra en [CODEOWNERS](../.github/CODEOWNERS). Los cambios de contrato requieren acuerdo entre los tres roles. Usar PR para integrar las contribuciones y revisar la CI antes de una demostración.
 
-El PR #50 publica la IaC de Leonardo y las correcciones de los tres roles. El relevo registra qué se probó realmente en Academy. Después se creó el hosting y el estado pasó a 29 recursos; la preparación actual de API, lago, puente y publicación web se revisa en ese PR en borrador. Las altas y la publicación web siguen pendientes de autorización. [Preparación vigente y responsables](rol1-listo-2026-11-15.md) · [Ensayo previo](revision-nocturna-2026-11-15.md)
+La IaC de Leonardo y las correcciones de los tres roles están en `main` mediante #52; #50 se cerró sin otro merge por ser redundante. Se conservan las mejoras de polling de #51, las semillas condicionales de #52, el SQL de retorno corregido en #53 y las consultas de demo de #54.
+
+Google ya tiene registrado el origen `https://demo.d2ygcm34t8aku9.amplifyapp.com`. Alexis reportó `arquifusion.af_bridge_stage` en US con vencimiento de tablas de 24 horas. La CLI de Leonardo está instalada pero sin identidad Google local: esa comprobación del propietario no sustituye el preflight de la futura sesión del operador. El ejemplo Terraform de staging mantiene su creación deshabilitada para evitar proponer otra alta del dataset existente.
+
+Leonardo autorizó exclusivamente el plan guardado de API con SHA-256 `87F604A64FDBB40E592D04164D2030918F165798E66A60BCA5DFC5E6C79116BB`: 31 altas, cero cambios/bajas y 29 recursos previos en no-op. Su aplicación terminó con ese mismo conteo. La URL real es `https://8wrfp8ncbh.execute-api.us-east-1.amazonaws.com/dev`; consultar las verificaciones posteriores en el [relevo de cierre](cierre-rol1-2026-11-15.md). Esa autorización no incluye sembrar datos/grants, publicar la web, crear el lago, cargar BigQuery o ejecutar el ensayo.
