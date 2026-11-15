@@ -7,12 +7,17 @@ export const IS_MOCK = (import.meta.env.VITE_API_MODE || "mock") !== "live";
 export const MOCK_TICK_MS = 2000;
 
 let token: string | undefined;
+let onUnauthorized: (() => void) | undefined;
 export const setAuthToken = (value: string | undefined) => {
   token = value;
 };
+/** Called when the API answers 401 (expired or revoked token): the app clears the session. */
+export const setUnauthorizedHandler = (handler: (() => void) | undefined) => {
+  onUnauthorized = handler;
+};
 
 function createApi(): FleetApi {
-  if (!IS_MOCK) return new HttpFleetApi(import.meta.env.VITE_API_URL, () => token);
+  if (!IS_MOCK) return new HttpFleetApi(import.meta.env.VITE_API_URL, () => token, () => onUnauthorized?.());
   const mock = new MockFleetApi();
   setInterval(() => mock.tick(), MOCK_TICK_MS);
   // Demo rehearsal: ?fault=EXC-0042:BEARING_WEAR injects a fault on load (several separated by commas).

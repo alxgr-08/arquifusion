@@ -1,6 +1,6 @@
 # frontend — owner: Rol 3
 
-React + Vite + TypeScript · MapLibre · Recharts. Hosted on S3 + CloudFront (Rol 1), users from Cognito groups.
+React + Vite + TypeScript · MapLibre · Recharts. Hosted on S3 + CloudFront (Rol 1), sign-in with Google Identity Services.
 
 ## Run
 
@@ -18,7 +18,7 @@ npm run build                # dist/ -> S3
 | `VITE_API_MODE` | Data |
 |---|---|
 | `mock` (default) | In-browser simulated fleet (`src/mock/`): 12 machines, technicians, parts, KPIs. Faults ramp up every 2 s and run the full incident flow, so the demo works without backend. |
-| `live` | API Gateway at `VITE_API_URL` (`contracts/api.md`), Cognito JWT in `Authorization`. |
+| `live` | Google sign-in first (`VITE_GOOGLE_CLIENT_ID`), then API Gateway at `VITE_API_URL` (`contracts/api.md`, include the stage, e.g. `/dev`) with the Google ID token in `Authorization`. The token is kept only in memory; the session ends on sign-out, on token expiry or on any 401. |
 
 Demo rehearsal (mock): open `/?fault=EXC-0042:BEARING_WEAR` or `/incidents?fault=TRK-0107:FUEL_BATCH_ZONE`
 to inject faults on load. Fault types: `BEARING_WEAR`, `OVERHEATING`, `HYDRAULIC_LEAK`, `FUEL_BATCH_ZONE` (whole zone, P11).
@@ -33,8 +33,8 @@ to inject faults on load. Fault types: `BEARING_WEAR`, `OVERHEATING`, `HYDRAULIC
 | `/kpis` | Productivity vs cost, fuel L/t vs model, per-machine table | P6, P7 |
 | `/parts` | Stock per warehouse, 4-week forecast, shortage / overstock / irregular demand | P3 |
 
-The role selector simulates the Cognito group until auth is wired: each role sees different sections and
-the incident message written for it.
+The role selector only changes the view (sections and the incident message for that role); it grants no access.
+The API authorizes each request with the grants stored in DynamoDB (#42).
 
 ## Needed from other roles
 

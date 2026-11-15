@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { ApiRequestError } from "../api/client";
 import type { Incident } from "../api/types";
 import { formatTime, METRIC_LABEL, ROLE_LABEL } from "../lib/domain";
 import { useRole } from "../lib/hooks";
@@ -12,6 +14,16 @@ const STATE_LABEL: Record<Incident["state"], string> = {
   RESOLVED: "Resuelto",
 };
 
+const ACK_ERROR: Record<string, string> = {
+  NO_GRANT: "Tu cuenta no tiene acceso a esta operación.",
+  OTHER_OPERATION: "Este incidente es de otra operación.",
+  FORBIDDEN: "Tu rol no puede confirmar incidentes.",
+  NOT_ASSIGNED: "Solo el técnico asignado puede confirmar.",
+  NO_TECH_ID: "Tu cuenta no está vinculada a un técnico.",
+  GRANT_CHANGED: "Tus permisos cambiaron; vuelve a intentarlo.",
+  CALLBACK_PENDING: "La confirmación quedó guardada; inténtalo de nuevo en unos segundos.",
+};
+
 const EVENT_LABEL: Record<string, string> = {
   DETECTED: "Detectado",
   ASSIGNED: "Asignado",
@@ -22,9 +34,19 @@ const EVENT_LABEL: Record<string, string> = {
 
 export function IncidentCard({ incident: i, compact, onChange }: { incident: Incident; compact?: boolean; onChange: () => void }) {
   const { role } = useRole();
+  const [busy, setBusy] = useState(false);
+  const [ackError, setAckError] = useState<string>();
   const ack = async (action: "ARRIVED" | "RESOLVED") => {
-    await api.ackIncident(i.machineId, i.incidentId, action);
-    onChange();
+    setBusy(true);
+    setAckError(undefined);
+    try {
+      await api.ackIncident(i.machineId, i.incidentId, action);
+      onChange();
+    } catch (err) {
+      setAckError(err instanceof ApiRequestError ? (ACK_ERROR[err.code] ?? err.message) : String(err));
+    } finally {
+      setBusy(false);
+    }
   };
   const canAct = role === "TECHNICIAN" || role === "MAINT_LEAD";
 
@@ -92,10 +114,11 @@ export function IncidentCard({ incident: i, compact, onChange }: { incident: Inc
 
       {canAct && i.state !== "RESOLVED" && (
         <div className="row">
-          {i.state === "ASSIGNED" && <button onClick={() => ack("ARRIVED")}>Confirmar llegada</button>}
-          {i.state === "IN_PROGRESS" && <button onClick={() => ack("RESOLVED")}>Cerrar incidente</button>}
+          {i.state === "ASSIGNED" && <button disabled={busy} onClick={() => ack("ARRIVED")}>Confirmar llegada</button>}
+          {i.state === "IN_PROGRESS" && <button disabled={busy} onClick={() => ack("RESOLVED")}>Cerrar incidente</button>}
         </div>
       )}
+      {ackError && <p className="error">{ackError}</p>}
     </article>
   );
 }
