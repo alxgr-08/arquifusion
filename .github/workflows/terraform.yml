@@ -1,0 +1,53 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - "services/**"
+      - "shared/**"
+      - "statemachines/**"
+      - "contracts/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra
+      - name: Validate independent roots without remote state
+        run: |
+          for root in infra/aws/bootstrap infra/aws infra/aws/telemetry infra/gcp; do
+            terraform -chdir="$root" init -input=false -backend=false
+            terraform -chdir="$root" validate
+          done
+      - name: Build the Lambda packages used in the speculative plan
+        run: |
+          python infra/aws/health_evaluator/build.py
+          python infra/aws/health_evaluator/build.py --incident
+          python infra/aws/health_evaluator/build.py --api
+          python infra/aws/maintenance/build.py
+          python -m services.lake_to_bigquery.build
+          python -m services.lake_to_bigquery.build --smoke
+      - name: Plan the Academy configuration with a simulated AWS provider
+        run: |
+          terraform -chdir=infra/aws test
+          terraform -chdir=infra/aws test -test-directory=api
+          terraform -chdir=infra/aws test -test-directory=tests-bridge
+          terraform -chdir=infra/aws init -backend=false -input=false -test-directory=maintenance/root-tests
+          terraform -chdir=infra/aws test -test-directory=maintenance/root-tests
+          terraform -chdir=infra/aws/telemetry test
+      - name: Check the optional BigQuery stage with a simulated Google provider
+        run: terraform -chdir=infra/gcp test

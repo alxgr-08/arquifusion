@@ -19,8 +19,12 @@ frontend/dist/
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
-.terraform.lock.hcl
+*.tfplan
+*.tfplan.json
+tfplan
+tfplan.*
 crash.log
 backend.hcl
 
@@ -33,6 +37,7 @@ backend.hcl
 *-credentials.json
 gcp-sa*.json
 service-account*.json
+arquifusion-????????????.json
 
 # OS / IDE
 .DS_Store

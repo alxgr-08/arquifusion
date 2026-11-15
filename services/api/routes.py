@@ -40,6 +40,7 @@ class Ctx:
     def __init__(self, table: Any, sfn: Any, now: str, event: dict[str, Any], params: dict[str, str]) -> None:
         self.table, self.sfn, self.now, self.event, self.params = table, sfn, now, event, params
         self.query = event.get("queryStringParameters") or {}
+        self.machine: dict[str, Any] | None = None
         self.principal: grants.Principal | None = None  # None only with AF_AUTH_DISABLED (local tests)
 
     def body(self) -> dict[str, Any]:
@@ -61,9 +62,29 @@ def _query_all(table: Any, limit: int = MAX_ITEMS, **kwargs: Any) -> list[dict[s
 def _iso_param(ctx: Ctx, name: str, default: str) -> str:
     value = ctx.query.get(name) or default
     try:
-        return iso(parse_iso(value))
+        return parse_iso(value).isoformat(timespec="microseconds").replace("+00:00", "Z")
     except ValueError as exc:
         raise ApiError(400, "INVALID_DATE", f"{name} must be ISO 8601 (e.g. 2026-11-13T14:05:00Z)") from exc
+
+
+def _operation_rows(ctx: Ctx, partition: str, sort_prefix: str = "") -> list[dict[str, Any]]:
+    """Use the eventual index for discovery and the current primary row for operation authorization."""
+    cond = Key("GSI1PK").eq(partition)
+    if sort_prefix:
+        cond &= Key("GSI1SK").begins_with(sort_prefix)
+    rows = []
+    for candidate in _query_all(ctx.table, IndexName="GSI1", KeyConditionExpression=cond):
+        current = ctx.table.get_item(
+            Key={"PK": candidate["PK"], "SK": candidate["SK"]}, ConsistentRead=True
+        ).get("Item")
+        if (
+            current
+            and current.get("GSI1PK") == partition
+            and current.get("GSI1SK", "").startswith(sort_prefix)
+            and current.get("operationId", ctx.params["op"]) == ctx.params["op"]
+        ):
+            rows.append(from_ddb(current))
+    return rows
 
 
 def _pick(row: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
@@ -185,11 +206,11 @@ def kpi_out(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def part_out(table: Any, part_id: str, now: str) -> dict[str, Any] | None:
+def part_out(table: Any, part_id: str, now: str, warehouses_allowed: set[str]) -> dict[str, Any] | None:
     rows = _query_all(table, KeyConditionExpression=Key("PK").eq(f"PART#{part_id}"))
     meta = next((r for r in rows if r["SK"] == "META"), None)
-    stocks = [r for r in rows if r["SK"].startswith("STOCK#")]
-    if meta is None and not stocks:
+    stocks = [r for r in rows if r["SK"].startswith("STOCK#") and r["SK"][6:] in warehouses_allowed]
+    if not stocks:
         return None
     meta = meta or stocks[0]
     start = parse_iso(now)
@@ -228,51 +249,81 @@ def part_out(table: Any, part_id: str, now: str) -> dict[str, Any] | None:
 
 # ------------------------------------------------------------------------------------------------- handlers
 def list_machines(ctx: Ctx) -> list[dict[str, Any]]:
-    cond = Key("GSI1PK").eq(f"OP#{ctx.params['op']}#MACHINE")
     status = (ctx.query.get("status") or "").upper()
-    if status:
-        cond = cond & Key("GSI1SK").begins_with(f"{status}#")
-    return [machine_out(r) for r in _query_all(ctx.table, IndexName="GSI1", KeyConditionExpression=cond)]
+    return [
+        machine_out(r)
+        for r in _operation_rows(ctx, f"OP#{ctx.params['op']}#MACHINE", f"{status}#" if status else "")
+    ]
 
 
 def get_machine(ctx: Ctx) -> dict[str, Any]:
-    item = ctx.table.get_item(Key=keys.machine_profile(ctx.params["id"])).get("Item")
+    item = ctx.machine or ctx.table.get_item(Key=keys.machine_profile(ctx.params["id"]), ConsistentRead=True).get(
+        "Item"
+    )
     if not item:
         raise ApiError(404, "MACHINE_NOT_FOUND", f"Machine {ctx.params['id']} not found")
     return machine_out(from_ddb(item))
 
 
 def list_readings(ctx: Ctx) -> list[dict[str, Any]]:
-    to = _iso_param(ctx, "to", ctx.now)
-    since = _iso_param(ctx, "from", iso(parse_iso(to) - timedelta(hours=24)))
+    to = parse_iso(_iso_param(ctx, "to", ctx.now))
+    since = parse_iso(_iso_param(ctx, "from", iso(to - timedelta(hours=24))))
     if since > to:
         raise ApiError(400, "INVALID_RANGE", "from must be before to")
+    # Legacy keys end in Z and newer keys contain fractional seconds. Their lexical order
+    # differs within a second, so discover whole seconds and compare the actual instants.
     cond = Key("PK").eq(keys.machine_pk(ctx.params["id"])) & Key("SK").between(
-        keys.reading_sk(since), keys.reading_sk(to)
+        keys.reading_sk(since.strftime("%Y-%m-%dT%H:%M:%S")),
+        keys.reading_sk((to + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S")),
     )
+    rows = [
+        r
+        for r in _query_all(ctx.table, KeyConditionExpression=cond)
+        if (ctx.principal is None or r.get("operationId") == ctx.machine["operationId"])
+        and since <= parse_iso(r["SK"].removeprefix("READING#")) <= to
+    ]
+    rows.sort(key=lambda r: parse_iso(r["SK"].removeprefix("READING#")))
     return [
         {"timestamp": r["SK"].removeprefix("READING#"), **_pick(r, ("healthScore", "severity", "metrics"))}
-        for r in _query_all(ctx.table, KeyConditionExpression=cond)
+        for r in rows
     ]
 
 
 def machine_incidents(ctx: Ctx) -> list[dict[str, Any]]:
     cond = Key("PK").eq(keys.machine_pk(ctx.params["id"])) & Key("SK").begins_with("INCIDENT#")
-    return [incident_out(r) for r in _query_all(ctx.table, 200, KeyConditionExpression=cond, ScanIndexForward=False)]
+    return [
+        incident_out(r)
+        for r in _query_all(ctx.table, 200, KeyConditionExpression=cond, ScanIndexForward=False)
+        if ctx.principal is None or r.get("operationId") == ctx.machine["operationId"]
+    ]
 
 
 def machine_maintenance(ctx: Ctx) -> list[dict[str, Any]]:
     cond = Key("PK").eq(keys.machine_pk(ctx.params["id"])) & Key("SK").begins_with("MAINT#")
-    return [maintenance_out(r) for r in _query_all(ctx.table, 200, KeyConditionExpression=cond, ScanIndexForward=False)]
+    rows = _query_all(ctx.table, 200, KeyConditionExpression=cond, ScanIndexForward=False)
+    if ctx.principal is None:
+        return [maintenance_out(r) for r in rows]
+    op = ctx.machine["operationId"]
+    legacy_incidents = set()
+    if any(not r.get("operationId") and r.get("incidentId") for r in rows):
+        incidents = Key("PK").eq(keys.machine_pk(ctx.params["id"])) & Key("SK").begins_with("INCIDENT#")
+        legacy_incidents = {
+            r["incidentId"]
+            for r in _query_all(ctx.table, KeyConditionExpression=incidents, ConsistentRead=True)
+            if r.get("operationId") == op and r.get("incidentId")
+        }
+    return [
+        maintenance_out(r)
+        for r in rows
+        if r.get("operationId") == op or (not r.get("operationId") and r.get("incidentId") in legacy_incidents)
+    ]
 
 
 def operation_incidents(ctx: Ctx) -> list[dict[str, Any]]:
     state = (ctx.query.get("state") or "OPEN").upper()
     if state not in ("OPEN", "CLOSED"):
         raise ApiError(400, "INVALID_STATE", "state must be OPEN or CLOSED")
-    rows = _query_all(
-        ctx.table, IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq(f"OP#{ctx.params['op']}#INCIDENT#{state}")
-    )
+    rows = _operation_rows(ctx, f"OP#{ctx.params['op']}#INCIDENT#{state}")
     out = [incident_out(r) for r in rows if r.get("incidentId")]
     out.sort(key=lambda i: i["createdAt"], reverse=True)
     out.sort(key=lambda i: SEV_RANK.get(i["severity"], 9))  # stable: CRITICAL first, newest first inside
@@ -280,25 +331,30 @@ def operation_incidents(ctx: Ctx) -> list[dict[str, Any]]:
 
 
 def technicians(ctx: Ctx) -> list[dict[str, Any]]:
-    cond = Key("GSI1PK").eq(f"OP#{ctx.params['op']}#TECH")
     availability = (ctx.query.get("availability") or "").upper()
-    if availability:
-        cond = cond & Key("GSI1SK").begins_with(f"{availability}#")
-    return [technician_out(r) for r in _query_all(ctx.table, IndexName="GSI1", KeyConditionExpression=cond)]
+    return [
+        technician_out(r)
+        for r in _operation_rows(ctx, f"OP#{ctx.params['op']}#TECH", f"{availability}#" if availability else "")
+    ]
+
+
+def _operation_warehouses(ctx: Ctx) -> set[str]:
+    op = ctx.query.get("operationId") or os.environ.get("AF_OPERATION_ID", "MINA-NORTE")
+    meta = ctx.table.get_item(Key={"PK": f"OP#{op}", "SK": "META"}, ConsistentRead=True).get("Item") or {}
+    return set(meta.get("warehouses", []))
 
 
 def list_parts(ctx: Ctx) -> list[dict[str, Any]]:
-    op = ctx.query.get("operationId") or os.environ.get("AF_OPERATION_ID", "MINA-NORTE")
-    meta = from_ddb(ctx.table.get_item(Key={"PK": f"OP#{op}", "SK": "META"}).get("Item") or {})
+    warehouses = _operation_warehouses(ctx)
     part_ids: set[str] = set()
-    for wh in meta.get("warehouses", []):
+    for wh in warehouses:
         for row in _query_all(ctx.table, IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq(f"WH#{wh}")):
             part_ids.add(row["GSI1SK"].removeprefix("PART#"))
-    return [p for p in (part_out(ctx.table, pid, ctx.now) for pid in sorted(part_ids)) if p]
+    return [p for p in (part_out(ctx.table, pid, ctx.now, warehouses) for pid in sorted(part_ids)) if p]
 
 
 def part_stock(ctx: Ctx) -> dict[str, Any]:
-    part = part_out(ctx.table, ctx.params["partId"], ctx.now)
+    part = part_out(ctx.table, ctx.params["partId"], ctx.now, _operation_warehouses(ctx))
     if part is None:
         raise ApiError(404, "PART_NOT_FOUND", f"Part {ctx.params['partId']} not found")
     return part
@@ -308,8 +364,7 @@ def kpis(ctx: Ctx) -> list[dict[str, Any]]:
     date = ctx.query.get("date") or iso(parse_iso(ctx.now) - timedelta(days=1))[:10]
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise ApiError(400, "INVALID_DATE", "date must be YYYY-MM-DD")
-    cond = Key("GSI1PK").eq(f"OP#{ctx.params['op']}#KPI#{date}")
-    return [kpi_out(r) for r in _query_all(ctx.table, IndexName="GSI1", KeyConditionExpression=cond)]
+    return [kpi_out(r) for r in _operation_rows(ctx, f"OP#{ctx.params['op']}#KPI#{date}")]
 
 
 ACK_STAGES = {"ARRIVED": "ARRIVAL", "RESOLVED": "RESOLUTION"}
@@ -321,6 +376,7 @@ def _find_incident(ctx: Ctx, machine_id: str, incident_id: str) -> dict[str, Any
         ctx.table,
         KeyConditionExpression=Key("PK").eq(keys.machine_pk(machine_id)) & Key("SK").begins_with("INCIDENT#"),
         FilterExpression=Attr("incidentId").eq(incident_id),
+        ConsistentRead=True,
     )
     if not rows:
         raise ApiError(404, "INCIDENT_NOT_FOUND", f"Incident {incident_id} not found for {machine_id}")
@@ -332,15 +388,16 @@ def _reload(ctx: Ctx, incident: dict[str, Any]) -> dict[str, Any]:
     return from_ddb(item or incident)
 
 
-def operation_of(ctx: Ctx) -> str | None:
-    """Operation a request touches: the {op} in the path or the machine's operation (None = not scoped)."""
+def operation_of(ctx: Ctx) -> str:
+    """Resolve the operation actually used by the selected route."""
     if "op" in ctx.params:
         return ctx.params["op"]
     if "id" in ctx.params:
-        row = ctx.table.get_item(Key=keys.machine_profile(ctx.params["id"])).get("Item")
-        if row:
-            return str(row.get("operationId"))
-    return None
+        ctx.machine = ctx.table.get_item(Key=keys.machine_profile(ctx.params["id"]), ConsistentRead=True).get("Item")
+        if not ctx.machine or not ctx.machine.get("operationId"):
+            raise ApiError(404, "MACHINE_NOT_FOUND", "Machine has no attributable operation")
+        return ctx.machine["operationId"]
+    return ctx.query.get("operationId") or os.environ.get("AF_OPERATION_ID", "MINA-NORTE")
 
 
 def _actor(ctx: Ctx, grant: grants.Grant | None, incident: dict[str, Any]) -> dict[str, Any]:
@@ -354,6 +411,8 @@ def _authorize_ack(ctx: Ctx, incident: dict[str, Any]) -> tuple[str, grants.Gran
     """Grant in the incident's operation; technicians only for incidents assigned to them. Returns (who, grant)."""
     if ctx.principal is None:  # AF_AUTH_DISABLED
         return incident.get("assignedTech") or "LOCAL", None
+    if not incident.get("operationId") or incident["operationId"] != ctx.machine["operationId"]:
+        raise ApiError(403, "OTHER_OPERATION", "Incident and current machine belong to different operations")
     grant = ctx.principal.grant_for(str(incident.get("operationId")))
     if grant is None:
         raise ApiError(403, "OTHER_OPERATION", "No access to the incident's operation")
@@ -384,10 +443,10 @@ def _if_match(ctx: Ctx) -> str:
     raw = header(ctx.event, "If-Match")
     if not raw:
         raise ApiError(428, "PRECONDITION_REQUIRED", "Send If-Match with the ETag of GET .../incidents/{incId}")
-    value = raw.strip().removeprefix("W/").strip().strip('"')
-    if not value or value == "*":
-        raise ApiError(428, "PRECONDITION_REQUIRED", "If-Match must be the ETag of the incident, not *")
-    return value
+    match = re.fullmatch(r'"([A-Za-z0-9_-]{1,128})"', raw.strip())
+    if match is None:
+        raise ApiError(428, "PRECONDITION_REQUIRED", "Send exactly one strong ETag from the incident detail")
+    return match[1]
 
 
 def _command(body: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
@@ -478,6 +537,8 @@ def _evidence(incident: dict[str, Any], receipt: dict[str, Any]) -> str:
 def get_incident(ctx: Ctx) -> Reply:
     """One incident with ETag = version of the wait it is in now (send it back as If-Match in POST .../ack)."""
     incident = _find_incident(ctx, ctx.params["id"], ctx.params["incId"])
+    if ctx.principal and (not incident.get("operationId") or incident["operationId"] != ctx.machine["operationId"]):
+        raise ApiError(403, "OTHER_OPERATION", "No access to this incident in the machine's current operation")
     return Reply(incident_out(incident), headers=etag(incident))
 
 
@@ -543,8 +604,13 @@ def ack(ctx: Ctx) -> Reply:
             "payload": json.dumps(payload, ensure_ascii=False),
             "status": "PENDING",
         }
-        wait_cond = "waitGeneration = :gen AND pendingStage = :stage AND taskToken = :tok"
-        wait_values: dict[str, Any] = {":gen": wanted, ":stage": stage, ":tok": incident["taskToken"]}
+        wait_cond = "waitGeneration = :gen AND pendingStage = :stage AND taskToken = :tok AND operationId = :op"
+        wait_values: dict[str, Any] = {
+            ":gen": wanted,
+            ":stage": stage,
+            ":tok": incident["taskToken"],
+            ":op": incident["operationId"],
+        }
         if grant is not None and grant.role == "TECHNICIAN":
             wait_cond += " AND assignedTech = :tech"
             wait_values[":tech"] = grant.tech_id
@@ -557,8 +623,18 @@ def ack(ctx: Ctx) -> Reply:
                     "ExpressionAttributeValues": wait_values,
                 }
             },
-            {"Put": {"Item": receipt, "ConditionExpression": "attribute_not_exists(PK)"}},
         ]
+        if grant:
+            actions.append(
+                {
+                    "ConditionCheck": {
+                        "Key": keys.machine_profile(ctx.params["id"]),
+                        "ConditionExpression": "operationId = :op",
+                        "ExpressionAttributeValues": {":op": incident["operationId"]},
+                    }
+                }
+            )
+        actions.append({"Put": {"Item": receipt, "ConditionExpression": "attribute_not_exists(PK)"}})
         try:
             transact_write(ctx.table, actions)
         except Exception as exc:
@@ -568,6 +644,8 @@ def ack(ctx: Ctx) -> Reply:
             offset = 1 if grant else 0
             if grant and reasons[:1] == ["ConditionalCheckFailed"]:
                 raise ApiError(403, "GRANT_CHANGED", "Your access changed; reload and try again") from exc
+            if grant and len(reasons) > offset + 1 and reasons[offset + 1] == "ConditionalCheckFailed":
+                raise ApiError(403, "OTHER_OPERATION", "The machine moved or was removed; reload it") from exc
             if len(reasons) > offset and reasons[offset] == "ConditionalCheckFailed":
                 fresh = _reload(ctx, incident)
                 if grant and grant.role == "TECHNICIAN" and fresh.get("assignedTech") != grant.tech_id:
@@ -577,7 +655,7 @@ def ack(ctx: Ctx) -> Reply:
             if receipt is None:
                 raise
 
-    if receipt["actor"].get("sub") != actor.get("sub"):
+    if any(receipt["actor"].get(key) != actor.get(key) for key in ("iss", "sub")):
         raise ApiError(409, "ACK_BY_OTHER", "This step was already confirmed by another user")
     if receipt["fingerprint"] != fingerprint:
         raise ApiError(409, "ACK_CONFLICT", "This step was already confirmed with other parts or notes")

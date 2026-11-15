@@ -512,29 +512,22 @@ class _Meta:
 
 
 class _FakeClient:
-    """Low-level client: only transact_write_items (typed AttributeValues), all-or-nothing like DynamoDB."""
+    """Table.meta.client, which accepts resource-style values and transacts atomically."""
 
     def __init__(self, table: FakeTable) -> None:
         self.table = table
 
     def transact_write_items(self, TransactItems: list[dict[str, Any]], **_: Any) -> dict:  # noqa: N803
-        from boto3.dynamodb.types import TypeDeserializer
         from botocore.exceptions import ClientError
 
-        de = TypeDeserializer()
         self.table.calls.append(("transact_write_items", {"count": len(TransactItems)}))
-
-        def plain(values: dict[str, Any] | None) -> dict[str, Any] | None:
-            return None if values is None else {k: de.deserialize(v) for k, v in values.items()}
 
         parsed = []
         for action in TransactItems:
             ((kind, spec),) = action.items()
             assert spec.get("TableName") == self.table.name, spec.get("TableName")
-            key = plain(spec.get("Key")) or {
-                k: v for k, v in (plain(spec.get("Item")) or {}).items() if k in ("PK", "SK")
-            }
-            parsed.append((kind, spec, key, plain(spec.get("ExpressionAttributeValues")), plain(spec.get("Item"))))
+            key = spec.get("Key") or {k: v for k, v in spec.get("Item", {}).items() if k in ("PK", "SK")}
+            parsed.append((kind, spec, key, spec.get("ExpressionAttributeValues"), spec.get("Item")))
         reasons = []
         for _kind, spec, key, values, _ in parsed:
             existing = self.table.items.get(self.table._key(key)) or {}

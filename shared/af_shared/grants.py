@@ -12,6 +12,7 @@ One row per operation; no row = no access. Revoking = deleting the row (or bumpi
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +21,10 @@ from boto3.dynamodb.conditions import Key
 from af_shared.http import ApiError, claims
 
 ROLES = {"OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER"}
+
+
+def auth_required() -> bool:
+    return bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME")) or os.getenv("AF_AUTH_DISABLED") != "true"
 
 
 def grant_pk(iss: str, sub: str) -> str:
@@ -90,7 +95,7 @@ class Principal:
 def identity(event: dict[str, Any]) -> tuple[str, str]:
     c = claims(event)
     iss, sub = str(c.get("iss") or ""), str(c.get("sub") or "")
-    if not iss or not sub:
+    if iss not in {"accounts.google.com", "https://accounts.google.com"} or not sub:
         raise ApiError(401, "UNAUTHORIZED", "Missing verified identity (iss/sub) in the token")
     return iss.removeprefix("https://"), sub
 

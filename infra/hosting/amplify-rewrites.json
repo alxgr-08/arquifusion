@@ -1,0 +1,7 @@
+[
+  {
+    "source": "</^\\/(?!assets(?:\\/|$))[^.]*$/>",
+    "target": "/index.html",
+    "status": "200"
+  }
+]

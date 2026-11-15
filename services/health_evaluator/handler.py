@@ -1,4 +1,4 @@
-"""af-{env}-health-evaluator: IoT Rule -> health score -> DynamoDB (+ AnomalyDetected on EventBridge)."""
+"""Evaluate telemetry and deliver durable anomaly events from the regional table."""
 
 from __future__ import annotations
 
@@ -8,9 +8,11 @@ import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import boto3
 from af_shared import AnomalyDetected, Telemetry, keys
+from af_shared.ddb import is_transaction_conditional_failure, parse_iso, transact_write
 from aws_lambda_powertools import Logger
 from botocore.exceptions import ClientError
 from pydantic import ValidationError
@@ -73,7 +75,7 @@ def from_ddb(value: Any) -> Any:
 
 
 def _iso(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def load_context(machine_id: str, model: str) -> tuple[dict[str, Any] | None, dict[str, FleetBaseline]]:
@@ -110,6 +112,7 @@ def persist(
         "PK": keys.machine_pk(msg.machine_id),
         "SK": keys.reading_sk(ts),
         "messageId": str(msg.message_id),
+        "operationId": msg.operation_id,
         "status": msg.status,
         "metrics": metrics,
         "healthScore": ev.health_score,
@@ -160,37 +163,89 @@ def persist(
             "alertId": str(msg.message_id),
             "detail": alert.detail.model_dump(mode="json", by_alias=True),
         }
-    if not profile or profile.get("status") != msg.status:  # GSI1SK only changes with status (fewer index writes)
+    if not profile or profile.get("status") != msg.status or profile.get("operationId") != msg.operation_id:
         sets += ["GSI1PK = :gpk", "GSI1SK = :gsk"]
         gsi = keys.machine_gsi1(msg.operation_id, msg.status, msg.machine_id)
         values |= {":gpk": gsi["GSI1PK"], ":gsk": gsi["GSI1SK"]}
 
-    client = _table().meta.client
-    try:
-        client.transact_write_items(
-            TransactItems=[
-                {
-                    "Put": {
-                        "TableName": _table().name,
-                        "Item": to_ddb(reading),
-                        "ConditionExpression": "attribute_not_exists(SK)",
-                    }
-                },
+    observed = (profile or {}).get("lastSeen")
+    if observed and parse_iso(observed) >= msg.timestamp:
+        return False
+    condition = "attribute_not_exists(lastSeen)"
+    if observed:
+        values[":observed"] = observed
+        # Compare instants above. The exact version check also supports legacy second-only timestamps.
+        condition = "lastSeen = :observed"
+    if not profile:
+        owner_condition = "attribute_not_exists(PK)"
+    elif profile.get("operationId"):
+        values[":owner"] = profile["operationId"]
+        owner_condition = "attribute_exists(PK) AND operationId = :owner"
+    else:
+        owner_condition = "attribute_exists(PK) AND attribute_not_exists(operationId)"
+    condition = f"({condition}) AND ({owner_condition})"
+    actions = [
+        {"Put": {"Item": reading, "ConditionExpression": "attribute_not_exists(SK)"}},
+        {
+            "Update": {
+                "Key": keys.machine_profile(msg.machine_id),
+                "UpdateExpression": "SET " + ", ".join(sets),
+                "ConditionExpression": condition,
+                "ExpressionAttributeNames": {"#status": "status"},
+                "ExpressionAttributeValues": values,
+            }
+        },
+    ]
+    if alert:
+        alert_id = str(msg.message_id)
+        pending = (profile or {}).get("pendingAlert")
+        if pending and pending["alertId"] != alert_id:
+            # PROFILE-only versions must acquire a durable row before a new escalation replaces their pointer.
+            previous = AnomalyDetected.model_validate({"detail": pending["detail"]}).detail
+            if previous.machine_id != msg.machine_id:
+                raise ValueError("Pending alert belongs to another machine")
+            actions.append(
                 {
                     "Update": {
-                        "TableName": _table().name,
-                        "Key": keys.machine_profile(msg.machine_id),
-                        "UpdateExpression": "SET " + ", ".join(sets),
-                        "ConditionExpression": "attribute_not_exists(lastSeen) OR lastSeen < :ts",
-                        "ExpressionAttributeNames": {"#status": "status"},
-                        "ExpressionAttributeValues": to_ddb(values),
+                        "Key": outbox_key(msg.machine_id, pending["alertId"]),
+                        "UpdateExpression": "SET alertId = :id, operationId = :op, #detail = :detail, "
+                        "GSI1PK = :gpk, GSI1SK = :gsk",
+                        "ConditionExpression": "attribute_not_exists(SK) OR "
+                        "(alertId = :id AND operationId = :op AND #detail = :detail)",
+                        "ExpressionAttributeNames": {"#detail": "detail"},
+                        "ExpressionAttributeValues": {
+                            ":id": pending["alertId"],
+                            ":op": previous.operation_id,
+                            ":detail": pending["detail"],
+                            ":gpk": "OUTBOX#ANOMALY",
+                            ":gsk": f"{previous.operation_id}#{msg.machine_id}#{pending['alertId']}",
+                        },
                     }
-                },
-            ]
+                }
+            )
+        actions.append(
+            {
+                "Put": {
+                    "Item": {
+                        **outbox_key(msg.machine_id, alert_id),
+                        **values[":alert"],
+                        "operationId": msg.operation_id,
+                        "GSI1PK": "OUTBOX#ANOMALY",
+                        "GSI1SK": f"{msg.operation_id}#{msg.machine_id}#{alert_id}",
+                    },
+                    "ConditionExpression": "attribute_not_exists(SK)",
+                }
+            }
         )
+    try:
+        transact_write(_table(), to_ddb(actions))
     except ClientError as err:
-        if err.response["Error"]["Code"] == "TransactionCanceledException":
-            return False
+        if is_transaction_conditional_failure(err):
+            current = _table().get_item(Key=keys.machine_profile(msg.machine_id), ConsistentRead=True).get("Item", {})
+            if current.get("lastSeen") and parse_iso(current["lastSeen"]) >= msg.timestamp:
+                return False
+        # A concurrent older reading changed the baseline, or the service rejected the write.
+        # The invocation must retry against the fresh profile.
         raise
     return True
 
@@ -225,11 +280,26 @@ def publish(event: AnomalyDetected) -> None:
             }
         ]
     )
+    entries = response.get("Entries", [])
     if response.get("FailedEntryCount"):
-        raise RuntimeError(f"EventBridge rejected AnomalyDetected: {response['Entries']}")
+        raise RuntimeError("EventBridge rejected the anomaly")
+    if response.get("FailedEntryCount") != 0 or len(entries) != 1 or not entries[0].get("EventId"):
+        raise RuntimeError("EventBridge did not confirm the anomaly")
+    logger.info(
+        "EventBridge accepted anomaly",
+        extra={
+            "eventId": entries[0]["EventId"],
+            "machineId": event.detail.machine_id,
+            "operationId": event.detail.operation_id,
+        },
+    )
 
 
-def clear_pending_alert(machine_id: str, alert_id: str) -> None:
+def outbox_key(machine_id: str, alert_id: str) -> dict[str, str]:
+    return {"PK": keys.machine_pk(machine_id), "SK": f"OUTBOX#ANOMALY#{UUID(alert_id)}"}
+
+
+def clear_pending_alert(machine_id: str, alert_id: str, operation_id: str) -> None:
     try:
         _table().update_item(
             Key=keys.machine_profile(machine_id),
@@ -240,32 +310,32 @@ def clear_pending_alert(machine_id: str, alert_id: str) -> None:
     except ClientError as err:
         if err.response["Error"]["Code"] != "ConditionalCheckFailedException":
             raise
-
-
-def flush_pending_alert(profile: dict[str, Any] | None) -> None:
-    """Re-publish an alert whose publication failed after its transaction committed (retry or next reading).
-
-    Safe to repeat: the incident Step Function claims PROFILE conditionally and ends in DuplicateIgnored.
-    """
-    pending = (profile or {}).get("pendingAlert")
-    if not pending:
-        return
-    event = AnomalyDetected.model_validate({"detail": pending["detail"]})
-    publish(event)
-    clear_pending_alert(event.detail.machine_id, pending["alertId"])
-    logger.warning("Pending AnomalyDetected re-published", extra={"alertId": pending["alertId"]})
+    # A newer alert may already occupy PROFILE. Remove only this accepted event.
+    try:
+        _table().delete_item(
+            Key=outbox_key(machine_id, alert_id),
+            ConditionExpression="operationId = :op",
+            ExpressionAttributeValues={":op": operation_id},
+        )
+    except _table().meta.client.exceptions.ConditionalCheckFailedException:
+        pass  # legacy PROFILE or another delivery already removed the durable row
 
 
 def process(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         msg = Telemetry.model_validate(payload)
     except ValidationError as err:
-        logger.error("Invalid telemetry", extra={"errors": err.errors(include_url=False)[:5]})
+        logger.error("Invalid telemetry", extra={"errors": err.errors(include_url=False, include_input=False)[:5]})
+        return {"result": "INVALID"}
+    if msg.timestamp.utcoffset() is None:
+        logger.error("Invalid telemetry timestamp", extra={"field": "timestamp", "reason": "timezone required"})
         return {"result": "INVALID"}
 
     logger.append_keys(machineId=msg.machine_id)
     profile, fleet = load_context(msg.machine_id, msg.model)
-    flush_pending_alert(profile)
+    if profile and profile.get("operationId") not in (None, msg.operation_id):
+        logger.error("Telemetry operation does not own the machine")
+        return {"result": "INVALID"}
     ev = evaluate(
         msg.metrics.model_dump(by_alias=True),
         state_from_profile(profile),
@@ -274,21 +344,83 @@ def process(payload: dict[str, Any]) -> dict[str, Any]:
         config=load_config(),
     )
     event = build_event(msg, ev, datetime.now(UTC)) if ev.should_emit else None
-    if not persist(msg, profile, ev, event):
+    saved = persist(msg, profile, ev, event)
+
+    # Persist new telemetry before attempting the bus. Every failed delivery remains in its own durable row.
+    deliveries = {}
+    pending = (profile or {}).get("pendingAlert")
+    if pending:
+        deliveries[pending["alertId"]] = pending["detail"]["operationId"]
+    if event or not saved:
+        # A replay can outlive PROFILE.pendingAlert, including after a newer escalation replaces the pointer.
+        deliveries[str(msg.message_id)] = msg.operation_id
+    first_error = None
+    for alert_id, operation_id in deliveries.items():
+        try:
+            outcome = reconcile(msg.machine_id, alert_id, operation_id)
+            if outcome == "ACCEPTED":
+                logger.warning("AnomalyDetected accepted", extra={"alertId": alert_id})
+        except Exception as err:
+            logger.warning(
+                "Anomaly delivery remains pending", extra={"alertId": alert_id, "errorType": type(err).__name__}
+            )
+            if first_error is None:
+                first_error = err
+    if first_error is not None:
+        raise first_error
+
+    if not saved:
         logger.info("Duplicate or out-of-order reading skipped")
         return {"result": "SKIPPED"}
-
-    if event:
-        publish(event)
-        clear_pending_alert(msg.machine_id, str(msg.message_id))
-        logger.warning("AnomalyDetected published", extra={"severity": ev.severity, "healthScore": ev.health_score})
 
     return {"result": "OK", "healthScore": ev.health_score, "severity": ev.severity, "emitted": ev.should_emit}
 
 
+def reconcile(machine_id: str, alert_id: str, operation_id: str) -> str:
+    key = outbox_key(machine_id, alert_id)
+    pending = _table().get_item(Key=key, ConsistentRead=True).get("Item")
+    if not pending:
+        profile = _table().get_item(Key=keys.machine_profile(machine_id), ConsistentRead=True).get("Item", {})
+        legacy = profile.get("pendingAlert") or {}
+        if legacy.get("alertId") != alert_id:
+            return "ALREADY_DELIVERED_OR_ABSENT"
+        pending = {**legacy, "operationId": legacy["detail"]["operationId"]}
+    event = AnomalyDetected.model_validate({"detail": from_ddb(pending["detail"])})
+    if (pending["operationId"], event.detail.operation_id, event.detail.machine_id, pending["alertId"]) != (
+        operation_id,
+        operation_id,
+        machine_id,
+        alert_id,
+    ):
+        raise ValueError("Outbox identity disagrees with its source")
+    publish(event)
+    clear_pending_alert(machine_id, alert_id, operation_id)
+    return "ACCEPTED"
+
+
 @logger.inject_lambda_context
 def handler(event: dict[str, Any] | list[dict[str, Any]], context: object) -> dict[str, Any]:
-    """IoT Rule `SELECT * FROM 'arquifusion/+/+/telemetry'` delivers one message; a list is accepted for batches."""
+    """Direct telemetry, one operator-selected recovery, or a filtered DynamoDB stream."""
+    if isinstance(event, dict) and "reconcileAlert" in event:
+        selected = event["reconcileAlert"]
+        return {"result": reconcile(selected["machineId"], selected["messageId"], selected["operationId"])}
+    if isinstance(event, dict) and "Records" in event:
+        prefix = _table().table_arn + "/stream/"
+        for record in event["Records"]:
+            if record.get("eventSource") != "aws:dynamodb" or not record.get("eventSourceARN", "").startswith(prefix):
+                raise ValueError("Unexpected outbox stream")
+            data = record["dynamodb"]
+            if record["eventName"] == "INSERT" and data["Keys"]["SK"]["S"].startswith("OUTBOX#ANOMALY#"):
+                try:
+                    reconcile(
+                        data["Keys"]["PK"]["S"].removeprefix("MACHINE#"),
+                        data["Keys"]["SK"]["S"].removeprefix("OUTBOX#ANOMALY#"),
+                        data["NewImage"]["operationId"]["S"],
+                    )
+                except Exception:
+                    logger.exception("Outbox delivery pending", extra={"sequence": data["SequenceNumber"]})
+                    return {"batchItemFailures": [{"itemIdentifier": data["SequenceNumber"]}]}
+        return {"batchItemFailures": []}
     messages = event if isinstance(event, list) else [event]
     results = [process(m) for m in messages]
     return results[0] if len(results) == 1 else {"results": results}

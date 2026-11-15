@@ -14,3 +14,5 @@
 ```bash
 pytest statemachines -k notif
 ```
+
+En el laboratorio, la configuración apunta al tópico de desarrollo y aplica atributos de rol/severidad. El inventario encontró cero suscriptores. Para afirmar recepción humana se necesita un destinatario que confirme su suscripción y recepción en un ensayo autorizado. [Arquitectura](../../docs/arquitectura.md)

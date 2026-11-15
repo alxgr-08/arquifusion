@@ -167,8 +167,105 @@ def test_direct_mode_invokes_evaluator_and_firehose(load_handler, monkeypatch) -
     h = load_handler("simulator")
     monkeypatch.setenv("AF_HEALTH_EVALUATOR_FUNCTION", "af-dev-health-evaluator")
     monkeypatch.setenv("AF_FIREHOSE_STREAM", "af-dev-telemetry")
-    lam, fh = Recorder(), Recorder()
+    lam = Recorder()
+    fh = Recorder({"put_record_batch": {"FailedPutCount": 0, "RequestResponses": [{"RecordId": "ok"}] * MACHINES}})
     clock = FakeClock()
     h.run(make_store([]), h.Publisher("direct", {"lambda": lam, "firehose": fh}), clock=clock, sleep=clock.sleep)
     assert len(lam.of("invoke")) == MACHINES and lam.of("invoke")[0]["InvocationType"] == "Event"
     assert len(fh.of("put_record_batch")[0]["Records"]) == MACHINES
+
+
+def direct_batch(load_handler, monkeypatch, responses):
+    handler = load_handler("simulator")
+    monkeypatch.setenv("AF_HEALTH_EVALUATOR_FUNCTION", "af-dev-health-evaluator")
+    monkeypatch.setenv("AF_FIREHOSE_STREAM", "af-dev-telemetry")
+    delays = []
+    monkeypatch.setattr(handler.time, "sleep", delays.append)
+    outcomes = iter(responses)
+
+    def next_response(**kwargs):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    evaluator = Recorder()
+    firehose = Recorder({"put_record_batch": next_response})
+    return (
+        handler,
+        handler.Publisher("direct", {"lambda": evaluator, "firehose": firehose}),
+        evaluator,
+        firehose,
+        delays,
+    )
+
+
+def test_direct_retries_only_failed_indices_with_original_bytes(load_handler, monkeypatch):
+    success = {"RecordId": "ok"}
+    failure = {"ErrorCode": "InternalFailure", "ErrorMessage": "try again"}
+    batch = [{"messageId": f"id-{i}", "metrics": {"rpm": None, "loadTons": 0}} for i in range(4)]
+    _, publisher, evaluator, firehose, delays = direct_batch(
+        load_handler,
+        monkeypatch,
+        [
+            {"FailedPutCount": 2, "RequestResponses": [success, failure, success, failure]},
+            {"FailedPutCount": 1, "RequestResponses": [failure, success]},
+            {"FailedPutCount": 0, "RequestResponses": [success]},
+        ],
+    )
+    publisher.publish(batch)
+    attempts = [call["Records"] for call in firehose.of("put_record_batch")]
+    assert attempts[1] == [attempts[0][1], attempts[0][3]]
+    assert attempts[2] == [attempts[0][1]]
+    assert [json.loads(r["Data"]) for r in attempts[0]] == batch
+    assert all(r["Data"].endswith(b"\n") for r in attempts[0])
+    assert [json.loads(call["Payload"]) for call in evaluator.of("invoke")] == batch
+    assert delays == [0.25, 0.5]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {},
+        {"FailedPutCount": 0, "RequestResponses": []},
+        {"FailedPutCount": 0, "RequestResponses": [{"ErrorCode": "InternalFailure"}]},
+        {"FailedPutCount": 1, "RequestResponses": [{"RecordId": "ok", "ErrorCode": "InternalFailure"}]},
+        {"FailedPutCount": 0, "RequestResponses": [{"RecordId": "ok", "ErrorMessage": "conflicting acknowledgement"}]},
+        {"FailedPutCount": 0, "RequestResponses": [{}]},
+        TimeoutError("lost response"),
+    ],
+)
+def test_direct_does_not_replay_ambiguous_records(load_handler, monkeypatch, response):
+    h, publisher, evaluator, firehose, delays = direct_batch(load_handler, monkeypatch, [response])
+    with pytest.raises(h.FirehosePublishError, match="Reconcile messageIds: id-9"):
+        publisher.publish([{"messageId": "id-9"}])
+    assert len(firehose.of("put_record_batch")) == len(evaluator.of("invoke")) == 1
+    assert not delays
+
+
+def test_timeout_during_partial_retry_identifies_only_pending_record(load_handler, monkeypatch):
+    h, publisher, evaluator, firehose, delays = direct_batch(
+        load_handler,
+        monkeypatch,
+        [
+            {"FailedPutCount": 1, "RequestResponses": [{"RecordId": "stored"}, {"ErrorCode": "InternalFailure"}]},
+            TimeoutError("late reply"),
+        ],
+    )
+    with pytest.raises(h.FirehosePublishError) as failure:
+        publisher.publish([{"messageId": "already-stored"}, {"messageId": "maybe-stored"}])
+    assert "maybe-stored" in str(failure.value) and "already-stored" not in str(failure.value)
+    assert [len(c["Records"]) for c in firehose.of("put_record_batch")] == [2, 1]
+    assert len(evaluator.of("invoke")) == 2 and delays == [0.25]
+
+
+def test_direct_exhaustion_reports_remaining_and_unsent_ids(load_handler, monkeypatch):
+    failure = {"ErrorCode": "ServiceUnavailableException"}
+    initial = {"FailedPutCount": 1, "RequestResponses": [{"RecordId": "ok"}] * 499 + [failure]}
+    pending = {"FailedPutCount": 1, "RequestResponses": [failure]}
+    h, publisher, evaluator, firehose, delays = direct_batch(load_handler, monkeypatch, [initial, pending, pending])
+    with pytest.raises(h.FirehosePublishError, match="after three attempts: id-499.*Never sent to Firehose: id-500"):
+        publisher.publish([{"messageId": f"id-{i}"} for i in range(501)])
+    assert [len(call["Records"]) for call in firehose.of("put_record_batch")] == [500, 1, 1]
+    assert len(evaluator.of("invoke")) == 501
+    assert delays == [0.25, 0.5]

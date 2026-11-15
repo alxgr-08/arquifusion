@@ -19,7 +19,16 @@ jobs:
       - name: Validate contracts
         run: python scripts/validate_contracts.py
       - name: Tests
+        env:
+          AWS_EC2_METADATA_DISABLED: "true"
+          PYTEST_ADDOPTS: "--disable-socket"
         run: python scripts/run_tests.py
+      - name: Test infrastructure adapters offline
+        env:
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: python -m pytest -q --disable-socket infra/aws/api infra/aws/health_evaluator infra/aws/incident infra/aws/telemetry infra/aws/maintenance infra/gcp infra/hosting
+      - name: Verify a single simulated reading at both destinations offline
+        run: python infra/aws/telemetry/prepare_case.py
 
   frontend:
     runs-on: ubuntu-latest

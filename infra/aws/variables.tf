@@ -1,3 +1,18 @@
+variable "expected_account_id" {
+  description = "AWS Academy account ID. Providers refuse to operate in any other account."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.expected_account_id))
+    error_message = "expected_account_id must contain exactly 12 digits."
+  }
+}
+
+variable "aws_profile" {
+  type    = string
+  default = "default"
+}
+
 variable "env" {
   type    = string
   default = "dev"
@@ -14,8 +29,9 @@ variable "replica_region" {
 }
 
 variable "lab_role_arn" {
-  description = "AWS Academy LabRole ARN. Learner Lab cannot create IAM roles, so every service assumes this one."
+  description = "Verified existing execution role ARN for later service deployments. Bucket and table do not use it."
   type        = string
+  default     = null
 }
 
 variable "operation_id" {
