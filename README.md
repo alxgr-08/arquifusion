@@ -15,6 +15,8 @@ Plataforma serverless y multinube para flotas de maquinaria pesada. Convierte la
 
 El histórico de BigQuery es sintético (12 máquinas) y está rotulado como tal. El puente AWS ↔ BigQuery (Firehose + Glue → S3 Parquet → BigQuery → KPI de vuelta a DynamoDB) está diseñado e implementado en código ([`lake_to_bigquery`](services/lake_to_bigquery/), [`bigquery_sync_back`](services/bigquery_sync_back/)) y Firehose/Glue se probó en un ensayo temporal, pero el recorrido completo no está desplegado en esta entrega.
 
+En el Learner Lab, alcanzar diez ejecuciones Lambda simultáneas pone en riesgo la cuenta compartida. La TA indicó ejecutar la ingesta con Python/Boto3 desde una máquina. La demo utiliza un evento manual de incidente, la regla EventBridge deshabilitada y los datos históricos ya cargados en BigQuery. [Estado, restricciones y recorrido del ensayo](docs/arquitectura.md)
+
 ## Cómo responde a la rúbrica
 
 | Criterio | Dónde está |
