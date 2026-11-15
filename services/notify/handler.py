@@ -3,7 +3,7 @@
 Trigger: Step Functions. Payload {"kind": INCIDENT|ESCALATED|ZONE_INCIDENT|RESTOCK|NO_TECHNICIAN|TECH_TIMEOUT|
 LONG_DOWNTIME|RESOLVED|DAILY_SUMMARY, "role"?: ..., "incident", "diagnosis", "assignment", "parts", ...}.
 Topic ARNs: SSM /af/notify/topics = {"OPERATOR": "arn:...", "TECHNICIAN": ..., ...}.
-Every pushed notification is also appended to the incident timeline so the web shows who was told what.
+Every pushed notification is also appended to the incident `activity` log so the web shows who was told what.
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ def record(table: Any, payload: dict[str, Any], result: dict[str, Any], now: str
     try:
         table.update_item(
             Key={"PK": f"MACHINE#{inc['machineId']}", "SK": inc["incidentSK"]},
-            UpdateExpression="SET timeline = list_append(timeline, :ev)",
+            UpdateExpression="SET activity = list_append(if_not_exists(activity, :empty), :ev)",
             ConditionExpression="attribute_exists(PK)",
-            ExpressionAttributeValues={":ev": events},
+            ExpressionAttributeValues={":ev": events, ":empty": []},
         )
     except Exception as exc:
         if not is_conditional_failure(exc):

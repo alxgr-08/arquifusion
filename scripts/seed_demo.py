@@ -6,14 +6,16 @@ Usage (lab credentials in ~/.aws/credentials):
     python scripts/seed_demo.py --dry-run         # print what would be written
 
 Writes:
-  DynamoDB  OP#/META, OP#/ZONE#, OP#/WH#, MACHINE#/PROFILE, MODEL#/BASELINE, TECH#/PROFILE, PART#/META, PART#/STOCK#
-  SSM       /af/sim/fleet-config, /af/sim/faults, /af/incident/catalog, /af/incident/settings
+  DynamoDB  OP#/META, OP#/ZONE#, OP#/WH#, MACHINE#/PROFILE, MODEL#/BASELINE (until bigquery-sync-back runs),
+            TECH#/PROFILE, PART#/META, PART#/STOCK#
+  SSM       /af/sim/fleet-config (the whole fleet-config.json), /af/sim/faults, /af/incident/settings
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,8 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "shared"))
 
 from af_shared import config, keys  # noqa: E402
-from af_shared.ddb import to_ddb  # noqa: E402
-from af_shared.fleet import INCIDENT_KEYS, SIMULATOR_KEYS, FleetConfig, subset  # noqa: E402
+from af_shared.ddb import now_iso, to_ddb  # noqa: E402
+from af_shared.fleet import METRIC_NAMES, FleetConfig  # noqa: E402
 
 DEMO_SETTINGS = {
     "techAckTimeoutSeconds": 90,
@@ -32,29 +34,42 @@ DEMO_SETTINGS = {
 }
 
 
-def build_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
+def build_items(raw: dict[str, Any], now: str | None = None) -> list[dict[str, Any]]:
     cfg = FleetConfig.model_validate(raw)
+    now = now or now_iso()
     op = cfg.operation_id
     items: list[dict[str, Any]] = [
         {
             "PK": f"OP#{op}",
             "SK": "META",
             "operationId": op,
-            "referenceTime": cfg.reference_time,
-            "zones": [z.zone_id for z in cfg.zones],
-            "warehouses": [w.warehouse_id for w in cfg.warehouses],
+            "zones": sorted(cfg.zones),
+            "warehouses": sorted(cfg.warehouses),
         },
     ]
-    items += [{"PK": f"OP#{op}", "SK": f"ZONE#{z.zone_id}", **z.model_dump(by_alias=True)} for z in cfg.zones]
-    items += [{"PK": f"OP#{op}", "SK": f"WH#{w.warehouse_id}", **w.model_dump(by_alias=True)} for w in cfg.warehouses]
-    for model in cfg.models:
+    for zone_id, z in cfg.zones.items():
         items.append(
             {
-                **keys.model_baseline_keys(model.model),
-                "model": model.model,
+                "PK": f"OP#{op}",
+                "SK": f"ZONE#{zone_id}",
+                "zoneId": zone_id,
+                "name": z.name,
+                "lat": z.lat,
+                "lon": z.lon,
+                "fuelBatchId": z.fuel_batch_id,
+            }
+        )
+    for wh_id, wh in cfg.warehouses.items():
+        items.append({"PK": f"OP#{op}", "SK": f"WH#{wh_id}", "warehouseId": wh_id, "zones": wh.zones})
+    for name, model in cfg.models.items():
+        metrics = {m: {"mean": model.normal_value(m), "std": round(model.std(m), 4), "n": 0} for m in METRIC_NAMES}
+        items.append(
+            {
+                **keys.model_baseline_keys(name),
+                "model": name,
                 "machineType": model.machine_type,
+                "metrics": metrics,
                 "source": "SEED",
-                "metrics": {k: v.model_dump() for k, v in model.metrics.items()},
             }
         )
     for m in cfg.machines:
@@ -77,10 +92,10 @@ def build_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 "anomalyStreak": 0,
                 "engineHours": m.engine_hours,
                 "lastMaintenanceHours": m.last_maintenance_hours,
-                "maintenanceIntervalHours": model.maintenance_interval_hours,
+                "maintenanceIntervalHours": model.interval_hours,
                 "nominalLoadTons": model.nominal_load_tons,
-                "costPerHourUsd": model.cost_per_hour_usd,
-                "fuelBatchId": m.fuel_batch_id,
+                "fuelBatchId": zone.fuel_batch_id,
+                "lastSeen": now,
             }
         )
     for t in cfg.technicians:
@@ -94,7 +109,7 @@ def build_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 "lat": t.lat,
                 "lon": t.lon,
                 "availability": "AVAILABLE",
-                "queueLength": 0,
+                "queue": 0,
             }
         )
     for p in cfg.parts:
@@ -104,31 +119,35 @@ def build_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 "SK": "META",
                 "partId": p.part_id,
                 "name": p.name,
-                "unitCostUsd": p.unit_cost_usd,
-                "leadTimeDays": p.lead_time_days,
+                "component": p.component,
+                "unitCost": p.unit_cost,
+                "dailyDemand": p.daily_demand,
             }
         )
+        total = sum(p.stock.values()) or 1
         for wh, qty in p.stock.items():
+            weekly = p.daily_demand * 7 * qty / total
             items.append(
                 {
                     **keys.stock_keys(p.part_id, wh),
                     "partId": p.part_id,
                     "warehouseId": wh,
                     "name": p.name,
+                    "component": p.component,
                     "qty": qty,
                     "available": qty,
                     "reserved": 0,
                     "reservations": {},
+                    "reorderPoint": max(1, math.ceil(weekly)),
                 }
             )
-    return [to_ddb(i) for i in items]
+    return [to_ddb({k: v for k, v in i.items() if v is not None}) for i in items]
 
 
 def build_parameters(raw: dict[str, Any], demo: bool) -> dict[str, Any]:
     return {
-        config.FLEET_CONFIG: subset(raw, SIMULATOR_KEYS),
+        config.FLEET_CONFIG: raw,
         config.SIM_FAULTS: {"faults": []},
-        config.INCIDENT_CATALOG: subset(raw, INCIDENT_KEYS),
         config.INCIDENT_SETTINGS: {**config.DEFAULT_INCIDENT_SETTINGS, **(DEMO_SETTINGS if demo else {})},
     }
 

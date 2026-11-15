@@ -66,7 +66,17 @@ def anomaly_event(
 
 
 def ai_example() -> dict[str, Any]:
-    return json.loads((EXAMPLES / "ai-diagnosis-response.bearing.json").read_text(encoding="utf-8"))
+    return json.loads((EXAMPLES / "ai-diagnosis-response.json").read_text(encoding="utf-8"))
+
+
+def alexis_rules(payload: dict[str, Any]) -> dict[str, Any]:
+    """The real af-dev-ai-diagnosis rule engine (Rol 3), fed with the request our Step Function builds.
+
+    DiagnosisRequest forbids extra fields, so this also checks our request against the contract."""
+    import rules  # services/ai_diagnosis/rules.py
+    from af_shared import DiagnosisRequest
+
+    return rules.diagnose(DiagnosisRequest.model_validate(payload)).model_dump(by_alias=True, mode="json")
 
 
 class Clock:
@@ -83,7 +93,7 @@ class Clock:
 
 
 class Harness:
-    def __init__(self, ai: Any = "example") -> None:
+    def __init__(self, ai: Any = "rules") -> None:
         raw = demo_fleet_raw()
         self.table = FakeTable()
         for item in seed_demo.build_items(raw):
@@ -103,6 +113,8 @@ class Harness:
 
     def ai_lambda(self, payload: dict[str, Any]) -> Any:
         self.ai_calls.append(payload)
+        if self.ai == "rules":
+            return alexis_rules(payload)
         if self.ai == "example":
             return ai_example()
         if callable(self.ai):

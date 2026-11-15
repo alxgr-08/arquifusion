@@ -2,6 +2,9 @@
 
 Every function is (table, payload, now) -> JSON-able dict, so the Step Function state stays small and the
 logic is testable with af_shared.fakes.FakeTable. Writes are conditional so Step Functions retries are safe.
+
+Incident items follow the Incident shape of frontend/src/api/types.ts. `timeline` only carries the events the
+web shows (DETECTED, ASSIGNED, ARRIVED, RESOLVED, ESCALATED); everything else goes to `activity`.
 """
 
 from __future__ import annotations
@@ -9,14 +12,25 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
-from af_shared import AiDiagnosisResponse, AnomalyDetected, keys, techs
-from af_shared.ddb import from_ddb, is_conditional_failure, minus, parse_iso, strip_keys, to_ddb
-from af_shared.fleet import haversine_km
+from af_shared import AnomalyDetected, DiagnosisResult, keys, techs
+from af_shared.ddb import from_ddb, is_conditional_failure, minus, parse_iso, to_ddb
+from af_shared.fleet import FleetConfig
 from boto3.dynamodb.conditions import Key
 from pydantic import ValidationError
 
 ROLES = ("OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER")
 SEVERITY_ORDER = {"OK": 0, "WATCH": 1, "WARNING": 2, "CRITICAL": 3}
+TIMELINE_EVENTS = {"DETECTED", "ASSIGNED", "ARRIVED", "RESOLVED", "ESCALATED"}
+REPAIR_MINUTES = {
+    "BEARING": 120,
+    "COOLING_SYSTEM": 60,
+    "HYDRAULIC_SYSTEM": 90,
+    "FUEL_SYSTEM": 60,
+    "ENGINE": 120,
+    "DRIVETRAIN": 150,
+    "SENSOR": 30,
+    "UNKNOWN": 90,
+}
 
 
 class TaskError(Exception):
@@ -27,7 +41,7 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}-{secrets.token_hex(2)}"
 
 
-def _timeline(event: str, at: str, **extra: Any) -> list[dict[str, Any]]:
+def _event(event: str, at: str, **extra: Any) -> list[dict[str, Any]]:
     return [{"at": at, "event": event, **{k: v for k, v in extra.items() if v is not None}}]
 
 
@@ -35,12 +49,28 @@ def _incident_key(machine_id: str, incident_sk: str) -> dict[str, str]:
     return {"PK": keys.machine_pk(machine_id), "SK": incident_sk}
 
 
+def _fleet(store: Any) -> FleetConfig:
+    from af_shared import config
+
+    return FleetConfig.model_validate(store.get_json(config.FLEET_CONFIG))
+
+
+def _ignore_conditional(fn: Any, **kwargs: Any) -> bool:
+    try:
+        fn(**kwargs)
+        return True
+    except Exception as exc:
+        if not is_conditional_failure(exc):
+            raise
+        return False
+
+
 # ----------------------------------------------------------------------------------------------- claim
 def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any]) -> dict[str, Any]:
     """ValidateEvent: validate AnomalyDetected and atomically claim 'one open incident per machine'.
 
-    The health-evaluator emits AnomalyDetected on every WARNING/CRITICAL reading, so most executions are
-    duplicates: they end here (and only escalate severity when it got worse).
+    The health-evaluator emits one event per escalation; if a machine already has an open incident the new
+    execution only escalates its severity (WARNING -> CRITICAL) and ends.
     """
     try:
         event = AnomalyDetected.model_validate(payload["event"])
@@ -67,50 +97,58 @@ def claim(table: Any, payload: dict[str, Any], now: str, settings: dict[str, Any
         "settings": settings,
         "roles": list(ROLES),
     }
-    try:
-        table.update_item(
-            Key=keys.machine_profile(d.machine_id),
-            UpdateExpression="SET openIncidentId = :id, openIncidentSK = :sk, openIncidentSeverity = :sev",
-            ConditionExpression="attribute_exists(PK) AND attribute_not_exists(openIncidentId)",
-            ExpressionAttributeValues={":id": incident_id, ":sk": incident_sk, ":sev": d.severity},
-        )
+    if _ignore_conditional(
+        table.update_item,
+        Key=keys.machine_profile(d.machine_id),
+        UpdateExpression="SET openIncidentId = :id, openIncidentSK = :sk, openIncidentSeverity = :sev",
+        ConditionExpression="attribute_exists(PK) AND attribute_not_exists(openIncidentId)",
+        ExpressionAttributeValues={":id": incident_id, ":sk": incident_sk, ":sev": d.severity},
+    ):
         return {**base, "duplicate": False, "escalated": False}
-    except Exception as exc:
-        if not is_conditional_failure(exc):
-            raise
 
     profile = table.get_item(Key=keys.machine_profile(d.machine_id)).get("Item")
     if not profile:
         raise TaskError(f"Unknown machine {d.machine_id}")
     open_id, open_sk = profile["openIncidentId"], profile["openIncidentSK"]
-    current = profile.get("openIncidentSeverity", "WARNING")
-    escalated = SEVERITY_ORDER[d.severity] > SEVERITY_ORDER.get(current, 0)
+    escalated = SEVERITY_ORDER[d.severity] > SEVERITY_ORDER.get(profile.get("openIncidentSeverity", "WARNING"), 0)
     if escalated:
-        _escalate(table, d.machine_id, d.operation_id, open_sk, d.severity, now)
+        _escalate(table, d.machine_id, d.operation_id, open_sk, d.severity, d.health_score, now)
     return {**base, "incidentId": open_id, "incidentSK": open_sk, "duplicate": True, "escalated": escalated}
 
 
-def _escalate(table: Any, machine_id: str, op: str, incident_sk: str, severity: str, now: str) -> None:
+def _escalate(table: Any, machine_id: str, op: str, incident_sk: str, severity: str, health: float, now: str) -> None:
     created_at = incident_sk.split("#")[1]
-    try:
-        table.update_item(
-            Key=_incident_key(machine_id, incident_sk),
-            UpdateExpression="SET severity = :sev, GSI1SK = :sk, timeline = list_append(timeline, :ev)",
-            ConditionExpression="GSI1PK = :open",
-            ExpressionAttributeValues={
+    _ignore_conditional(  # the incident row may not exist yet (first execution still in EnrichContext)
+        table.update_item,
+        Key=_incident_key(machine_id, incident_sk),
+        UpdateExpression="SET severity = :sev, healthScore = :h, GSI1SK = :sk, aiDiagnosis.stopMachine = :stop, "
+        "timeline = list_append(timeline, :ev)",
+        ConditionExpression="GSI1PK = :open",
+        ExpressionAttributeValues=to_ddb(
+            {
                 ":sev": severity,
+                ":h": health,
                 ":open": f"OP#{op}#INCIDENT#OPEN",
+                ":stop": severity == "CRITICAL",
                 ":sk": keys.incident_gsi1(op, "OPEN", severity, created_at)["GSI1SK"],
-                ":ev": _timeline("ESCALATED", now, severity=severity),
-            },
-        )
-    except Exception as exc:
-        if not is_conditional_failure(exc):  # the incident row may not exist yet (still in EnrichContext)
-            raise
+                ":ev": _event("ESCALATED", now),
+            }
+        ),
+    )
     table.update_item(
         Key=keys.machine_profile(machine_id),
         UpdateExpression="SET openIncidentSeverity = :sev",
         ExpressionAttributeValues={":sev": severity},
+    )
+
+
+def release_claim_only(table: Any, inc: dict[str, Any]) -> None:
+    _ignore_conditional(
+        table.update_item,
+        Key=keys.machine_profile(inc["machineId"]),
+        UpdateExpression="REMOVE openIncidentId, openIncidentSK, openIncidentSeverity",
+        ConditionExpression="openIncidentId = :id",
+        ExpressionAttributeValues={":id": inc["incidentId"]},
     )
 
 
@@ -119,20 +157,17 @@ def release_claim(table: Any, payload: dict[str, Any], now: str) -> dict[str, An
     inc = payload["incident"]
     release_claim_only(table, inc)
     error = payload.get("error") or {}
-    try:
-        table.update_item(
-            Key=_incident_key(inc["machineId"], inc["incidentSK"]),
-            UpdateExpression="SET #st = :failed, timeline = list_append(timeline, :ev)",
-            ConditionExpression="attribute_exists(PK)",
-            ExpressionAttributeNames={"#st": "state"},
-            ExpressionAttributeValues={
-                ":failed": "FAILED",
-                ":ev": _timeline("FAILED", now, error=str(error.get("Error", ""))[:200]),
-            },
-        )
-    except Exception as exc:
-        if not is_conditional_failure(exc):
-            raise
+    _ignore_conditional(
+        table.update_item,
+        Key=_incident_key(inc["machineId"], inc["incidentSK"]),
+        UpdateExpression="SET flowFailed = :t, GSI1PK = :closed, activity = list_append(activity, :ev)",
+        ConditionExpression="attribute_exists(PK)",
+        ExpressionAttributeValues={
+            ":t": True,
+            ":closed": f"OP#{inc['operationId']}#INCIDENT#CLOSED",
+            ":ev": _event("FAILED", now, error=str(error.get("Error", ""))[:200]),
+        },
+    )
     return {"released": True}
 
 
@@ -146,44 +181,76 @@ def _latest_reading(table: Any, machine_id: str) -> dict[str, Any] | None:
     return from_ddb(res["Items"][0]) if res["Items"] else None
 
 
-def get_profile(table: Any, payload: dict[str, Any], catalog: dict[str, Any]) -> dict[str, Any]:
+def _clean(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def get_profile(table: Any, payload: dict[str, Any]) -> dict[str, Any]:
     inc = payload["incident"]
     item = table.get_item(Key=keys.machine_profile(inc["machineId"])).get("Item")
     if not item:
         raise TaskError(f"Unknown machine {inc['machineId']}")
     p = from_ddb(item)
-    reading = _latest_reading(table, inc["machineId"]) or {}
-    batch = (reading.get("context") or {}).get("fuelBatchId") or p.get("fuelBatchId")
+    reading_ctx = (_latest_reading(table, inc["machineId"]) or {}).get("context") or {}
+    batch = reading_ctx.get("fuelBatchId") or p.get("fuelBatchId")
     return {
         "machineId": inc["machineId"],
         "model": p.get("model"),
-        "machineType": p.get("machineType"),
         "zoneId": p.get("zoneId"),
         "lat": p.get("lat"),
         "lon": p.get("lon"),
-        "status": p.get("status"),
-        "engineHours": p.get("engineHours"),
-        "lastMaintenanceHours": p.get("lastMaintenanceHours"),
         "fuelBatchId": batch,
-        "candidateFailureModes": catalog.get("failureModes", []),
+        # contract-ready blocks for the ai-diagnosis request (additionalProperties: false)
+        "aiMachine": _clean(
+            {
+                "status": p.get("status"),
+                "engineHours": p.get("engineHours"),
+                "lastMaintenanceHours": p.get("lastMaintenanceHours"),
+            }
+        ),
+        "aiContext": _clean({"fuelBatchId": batch, "ambientTempC": reading_ctx.get("ambientTempC")}),
     }
 
 
 def get_history(table: Any, payload: dict[str, Any], limit: int = 5) -> dict[str, Any]:
     pk = keys.machine_pk(payload["incident"]["machineId"])
-    out = {}
-    for name, prefix in (("incidents", "INCIDENT#"), ("maintenance", "MAINT#")):
+    entries = []
+    for prefix in ("INCIDENT#", "MAINT#"):
         res = table.query(
             KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with(prefix),
             ScanIndexForward=False,
             Limit=limit + 1,
         )
-        rows = [strip_keys(i) for i in res["Items"] if i.get("incidentId") != payload["incident"]["incidentId"]]
-        for r in rows:
-            r.pop("taskToken", None)
-            r.pop("anomaly", None)
-        out[name] = rows[:limit]
-    return out
+        for row in map(from_ddb, res["Items"]):
+            if row.get("incidentId") == payload["incident"]["incidentId"]:
+                continue
+            if prefix == "INCIDENT#":
+                diag = row.get("aiDiagnosis") or {}
+                entries.append(
+                    _clean(
+                        {
+                            "type": "INCIDENT",
+                            "at": row.get("createdAt"),
+                            "summary": f"{row.get('severity')} {diag.get('component', '')}: "
+                            f"{diag.get('probableCause', '')}"[:300],
+                            "partsReplaced": [p["partId"] for p in row.get("partsUsed", [])] or None,
+                        }
+                    )
+                )
+            else:
+                entries.append(
+                    _clean(
+                        {
+                            "type": "MAINTENANCE",
+                            "at": row.get("date"),
+                            "summary": (row.get("notes") or row.get("type", ""))[:300],
+                            "partsReplaced": row.get("partsReplaced") or None,
+                        }
+                    )
+                )
+    entries = [e for e in entries if e.get("at")]
+    entries.sort(key=lambda e: e["at"], reverse=True)
+    return {"aiHistory": entries[:10]}
 
 
 def find_zone_correlation(table: Any, payload: dict[str, Any]) -> dict[str, Any]:
@@ -199,113 +266,179 @@ def find_zone_correlation(table: Any, payload: dict[str, Any]) -> dict[str, Any]
     machines: dict[str, dict[str, Any]] = {}
     for row in map(from_ddb, res["Items"]):
         mid = row["PK"].removeprefix("MACHINE#")
-        if mid == inc["machineId"] or row.get("state") == "FAILED":
+        if mid == inc["machineId"] or row.get("flowFailed"):
             continue
+        signals = sorted(row.get("signals", []), key=lambda s: -abs(s.get("zScore", 0)))
         machines[mid] = {
             "machineId": mid,
             "incidentId": row.get("incidentId"),
-            "model": row.get("model"),
-            "failureMode": row.get("failureMode"),
-            "fuelBatchId": row.get("fuelBatchId"),
-            "createdAt": row.get("createdAt"),
             "incidentSK": row["SK"],
             "state": row.get("state"),
+            "model": row.get("model"),
+            "ai": _clean(
+                {
+                    "machineId": mid,
+                    "model": row.get("model"),
+                    "detectedAt": row.get("detectedAt"),
+                    "severity": row.get("severity"),
+                    "topMetric": signals[0]["metric"] if signals else None,
+                    "fuelBatchId": row.get("fuelBatchId"),
+                }
+            ),
         }
-    return {"zoneId": inc["zoneId"], "windowMinutes": window, "machines": list(machines.values())}
+    others = list(machines.values())
+    return {
+        "zoneId": inc["zoneId"],
+        "windowMinutes": window,
+        "machines": others,
+        "aiZoneCorrelation": [m["ai"] for m in others],
+    }
 
 
 # ----------------------------------------------------------------------------------------------- diagnosis
+def _component(strong: set[str], signals: list[dict[str, Any]]) -> str:
+    if {"temperatureC", "vibrationMmS"} <= strong:
+        return "BEARING"
+    if "pressureBar" in strong:
+        return "HYDRAULIC_SYSTEM"
+    if "fuelRateLph" in strong:
+        return "FUEL_SYSTEM"
+    if "temperatureC" in strong:
+        return "COOLING_SYSTEM"
+    if "vibrationMmS" in strong:
+        return "DRIVETRAIN"
+    return "ENGINE" if signals else "UNKNOWN"
+
+
+CAUSES = {
+    "BEARING": (
+        "Probable desgaste de rodamiento: temperatura y vibración suben juntas.",
+        "Detener, inspeccionar rodamientos y lubricación; reemplazar si hay holgura.",
+    ),
+    "HYDRAULIC_SYSTEM": (
+        "Probable fuga hidráulica: la presión cae por debajo de lo normal.",
+        "Revisar mangueras, sellos y nivel de aceite; cambiar filtro hidráulico.",
+    ),
+    "FUEL_SYSTEM": (
+        "Consumo de combustible anormal: posible combustible contaminado o inyectores.",
+        "Drenar y cambiar filtro de combustible; tomar muestra del lote.",
+    ),
+    "COOLING_SYSTEM": (
+        "Probable falla de refrigeración: la temperatura sube sin otra causa mecánica.",
+        "Revisar refrigerante, radiador y ventilador.",
+    ),
+    "DRIVETRAIN": ("Vibración anormal en el tren de potencia.", "Inspeccionar transmisión y ejes."),
+    "ENGINE": ("Anomalía de motor sin patrón claro.", "Inspección general del motor."),
+    "UNKNOWN": ("Anomalía sin patrón conocido.", "Inspección general."),
+}
+
+
 def rule_diagnosis(payload: dict[str, Any]) -> dict[str, Any]:
-    """Deterministic fallback with the same shape as ai-diagnosis, so the flow never depends on the LLM."""
+    """Fallback with the ai-diagnosis response shape (contracts/ai-diagnosis-response.schema.json).
+
+    Only used if the af-dev-ai-diagnosis Lambda itself fails (it already has its own rules for Bedrock errors).
+    """
     inc, ctx = payload["incident"], payload.get("context", {})
-    profile = ctx.get("profile", {})
-    modes = profile.get("candidateFailureModes", [])
     signals = inc["anomaly"]["signals"]
     strong = {s["metric"] for s in signals if abs(s["zScore"]) >= 2} or {s["metric"] for s in signals}
-
-    best = None
-    for mode in modes:
-        wanted = set(mode["metrics"])
-        if wanted <= strong and (best is None or len(wanted) > len(best["metrics"])):
-            best = mode
-    if best is None:
-        overlap = [(len(set(m["metrics"]) & strong), m) for m in modes]
-        overlap = [o for o in overlap if o[0]]
-        best = max(overlap, key=lambda o: o[0])[1] if overlap else None
-
-    machine, sev = inc["machineId"], inc["severity"]
+    component = _component(strong, signals)
+    cause, action = CAUSES[component]
+    stop = inc["severity"] == "CRITICAL"
     zone = ctx.get("zone", {})
-    detail = ", ".join(f"{s['metric']} {s['value']} (base {s['baseline']})" for s in signals[:3])
-    label = best["label"] if best else "Anomalia sin patron conocido"
-    stop = sev == "CRITICAL"
-    hypothesis = zone_hypothesis(profile, zone, best["mode"] if best else None)
-    messages = {
-        "OPERATOR": f"{machine}: {'DETENER la maquina de forma segura' if stop else 'continuar con precaucion'}. "
-        "Un tecnico fue asignado.",
-        "TECHNICIAN": f"{machine} ({inc['zoneId']}): {label.lower()} probable. Senales: {detail}.",
-        "MAINT_LEAD": f"Incidente {sev} en {machine}: {label.lower()} probable.",
-        "SUPERVISOR": f"{machine} en {inc['zoneId']}: {label.lower()} probable ({sev}).",
-        "MANAGER": f"{machine}: incidente {sev} en atencion.",
-    }
+    others = zone.get("aiZoneCorrelation", [])
+    zone_analysis = None
+    if len(others) + 1 >= int(inc["settings"].get("zoneMinMachines", 3)):
+        batch = (ctx.get("profile") or {}).get("fuelBatchId")
+        batches = {o.get("fuelBatchId") for o in others} | {batch}
+        common = (
+            f"Posible lote de combustible contaminado {batch}."
+            if batch and len(batches) == 1
+            else f"{len(others) + 1} máquinas con incidentes en {inc['zoneId']}: revisar condiciones de la zona."
+        )
+        zone_analysis = {
+            "isZoneIncident": True,
+            "commonCause": common,
+            "evidence": [f"{len(others) + 1} máquinas con incidentes en {inc['zoneId']} en las últimas 2 h"],
+        }
+    where = f"{inc['machineId']} ({inc['zoneId']})"
+    zone_note = f" Incidente de zona: {zone_analysis['commonCause']}" if zone_analysis else ""
+    minutes = REPAIR_MINUTES[component]
     return {
         "schemaVersion": "1.0",
         "source": "RULES",
-        "failureMode": best["mode"] if best else "UNKNOWN",
-        "diagnosis": f"{label} probable: {detail}."[:400],
-        "confidence": 0.6 if best else 0.3,
-        "recommendedParts": best["parts"] if best else [],
-        "requiredSpecialty": best["specialty"] if best else "MECHANICAL",
-        "operatorAction": "STOP" if stop else "CONTINUE_WITH_CAUTION",
-        "messages": messages,
-        "zoneHypothesis": hypothesis,
+        "modelId": None,
+        "diagnosis": {
+            "probableCause": cause,
+            "component": component,
+            "confidence": "MEDIUM" if component != "UNKNOWN" else "LOW",
+            "recommendedAction": action,
+            "stopMachine": stop,
+            "estimatedRepairMinutes": minutes,
+        },
+        "zoneAnalysis": zone_analysis,
+        "messages": {
+            "OPERATOR": f"Detén {inc['machineId']} de forma segura y espera al técnico."
+            if stop
+            else f"Continúa con {inc['machineId']} reduciendo la carga; un técnico va en camino.",
+            "TECHNICIAN": f"{where}: {cause} Acción: {action}",
+            "MAINT_LEAD": f"Incidente {inc['severity']} en {where}. Componente {component}. "
+            f"{minutes} min estimados.{zone_note}",
+            "SUPERVISOR": f"{inc['machineId']} {'detenida' if stop else 'operando con restricción'} "
+            f"en {inc['zoneId']}.{zone_note}",
+            "MANAGER": f"{inc['operationId']}: incidente {inc['severity']} en {inc['machineId']}, "
+            f"~{minutes} min de inactividad.{zone_note}",
+        },
     }
 
 
-def zone_hypothesis(profile: dict[str, Any], zone: dict[str, Any], mode: str | None) -> str | None:
-    others = zone.get("machines", [])
-    if not others:
-        return None
-    group = [{"model": profile.get("model"), "fuelBatchId": profile.get("fuelBatchId"), "failureMode": mode}] + others
-    total = len(group)
-    commons = []
-    for field, label in (("fuelBatchId", "lote de combustible"), ("failureMode", "modo de falla"), ("model", "modelo")):
-        values = [g.get(field) for g in group if g.get(field)]
-        if values and len(values) == total and len(set(values)) == 1:
-            commons.append(f"{label} {values[0]}")
-    if not commons:
-        return f"{total} maquinas con incidentes en {zone.get('zoneId')} sin un factor comun evidente."
-    return f"{total} maquinas en {zone.get('zoneId')} comparten {', '.join(commons)}: probable causa comun."
-
-
 def normalize_diagnosis(payload: dict[str, Any]) -> dict[str, Any]:
-    """Validate the AI response; fall back to rules if it is missing or invalid."""
+    """Validate the ai-diagnosis answer against the contract; fall back to rules if missing or invalid."""
     response = (payload.get("ai") or {}).get("response")
     if response is not None:
         try:
-            ai = AiDiagnosisResponse.model_validate(response).model_dump(by_alias=True)
-            known = {m["mode"] for m in payload.get("context", {}).get("profile", {}).get("candidateFailureModes", [])}
-            if ai["failureMode"] in known | {"UNKNOWN"}:
-                if not ai.get("zoneHypothesis"):
-                    ai["zoneHypothesis"] = rule_diagnosis(payload)["zoneHypothesis"]
-                return ai
+            return DiagnosisResult.model_validate(response).model_dump(by_alias=True, mode="json")
         except ValidationError:
             pass
     return rule_diagnosis(payload)
 
 
+def web_diagnosis(result: dict[str, Any]) -> dict[str, Any]:
+    """AiDiagnosis shape of frontend/src/api/types.ts."""
+    d = result["diagnosis"]
+    out = {
+        "source": result["source"],
+        **{
+            k: d[k]
+            for k in (
+                "probableCause",
+                "component",
+                "confidence",
+                "recommendedAction",
+                "stopMachine",
+                "estimatedRepairMinutes",
+            )
+        },
+    }
+    if result.get("zoneAnalysis"):
+        out["zoneCause"] = result["zoneAnalysis"]["commonCause"]
+    return out
+
+
 # ----------------------------------------------------------------------------------------------- create
 def create_incident(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
     inc, ctx = payload["incident"], payload.get("context", {})
-    diagnosis = normalize_diagnosis(payload)
+    result = normalize_diagnosis(payload)
     zone = ctx.get("zone", {"machines": []})
     profile = ctx.get("profile", {})
     min_machines = int(inc["settings"].get("zoneMinMachines", 3))
-    zone_incident = len(zone.get("machines", [])) + 1 >= min_machines
+    zone_incident = (
+        bool((result.get("zoneAnalysis") or {}).get("isZoneIncident"))
+        or len(zone.get("machines", [])) + 1 >= min_machines
+    )
     item = {
         **_incident_key(inc["machineId"], inc["incidentSK"]),
         **keys.incident_gsi1(inc["operationId"], "OPEN", inc["severity"], inc["createdAt"]),
         **keys.incident_gsi2(inc["operationId"], inc["zoneId"], inc["createdAt"], inc["machineId"]),
-        "kind": "MACHINE",
         "incidentId": inc["incidentId"],
         "machineId": inc["machineId"],
         "operationId": inc["operationId"],
@@ -317,160 +450,131 @@ def create_incident(table: Any, payload: dict[str, Any], now: str) -> dict[str, 
         "detectedAt": inc["detectedAt"],
         "healthScore": inc["anomaly"]["healthScore"],
         "signals": inc["anomaly"]["signals"],
-        "failureMode": diagnosis["failureMode"],
-        "aiDiagnosis": diagnosis["diagnosis"],
-        "aiSource": diagnosis["source"],
-        "aiConfidence": diagnosis["confidence"],
-        "operatorAction": diagnosis["operatorAction"],
-        "requiredSpecialty": diagnosis["requiredSpecialty"],
+        "aiDiagnosis": web_diagnosis(result),
+        "messages": result["messages"],
+        "aiModelId": result.get("modelId"),
         "fuelBatchId": profile.get("fuelBatchId"),
-        "engineHoursAtDetection": profile.get("engineHours"),
+        "engineHoursAtDetection": (profile.get("aiMachine") or {}).get("engineHours"),
+        "partsReserved": [],
         "correlatedIncidents": [m["incidentId"] for m in zone.get("machines", []) if m.get("incidentId")],
-        "zoneHypothesis": diagnosis.get("zoneHypothesis"),
-        "timeline": _timeline("DETECTED", inc["detectedAt"], severity=inc["severity"])
-        + _timeline("DIAGNOSED", now, source=diagnosis["source"], failureMode=diagnosis["failureMode"]),
+        "timeline": _event("DETECTED", inc["detectedAt"]),
+        "activity": _event("DIAGNOSED", now, source=result["source"], component=result["diagnosis"]["component"]),
     }
-    item = {k: v for k, v in item.items() if v is not None}
-    try:
-        table.put_item(Item=to_ddb(item), ConditionExpression="attribute_not_exists(PK)")
-    except Exception as exc:
-        if not is_conditional_failure(exc):  # retry after a successful write: keep the first one
-            raise
-    return {
-        "zoneIncident": zone_incident,
-        "diagnosis": diagnosis,
-        "correlatedIncidents": item.get("correlatedIncidents", []),
-    }
+    _ignore_conditional(table.put_item, Item=to_ddb(_clean(item)), ConditionExpression="attribute_not_exists(PK)")
+    return {"zoneIncident": zone_incident, "diagnosis": result, "correlatedIncidents": item["correlatedIncidents"]}
 
 
 def create_zone_incident(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any]:
-    """One open zone incident per zone and window; later machines join it (P11)."""
+    """One zone incident per zone and window; later machines join it (P11). Members get zoneIncidentId and the
+    common cause in aiDiagnosis.zoneCause, which is what the web shows."""
     inc, created = payload["incident"], payload["created"]
     op, zone_id = inc["operationId"], inc["zoneId"]
     zone = payload.get("context", {}).get("zone", {})
     others = zone.get("machines", [])
-    open_others = [m for m in others if m.get("state") != "CLOSED" and m.get("incidentSK")]
+    open_others = [m for m in others if m.get("state") not in ("RESOLVED", "CLOSED") and m.get("incidentSK")]
     all_ids = {inc["incidentId"], *(m["incidentId"] for m in others if m.get("incidentId"))}
     members = {inc["incidentId"], *(m["incidentId"] for m in open_others)}
     machines = {inc["machineId"], *(m["machineId"] for m in others)}
     to_link = [inc, *open_others]
+    analysis = created["diagnosis"].get("zoneAnalysis") or {}
+    cause = analysis.get("commonCause") or f"{len(machines)} máquinas con incidentes en {zone_id}."
     window = int(inc["settings"].get("zoneWindowMinutes", 120))
+    lock = {"PK": f"OP#{op}", "SK": f"ZONE_INCIDENT_LOCK#{zone_id}"}
     zinc_id = _new_id("ZINC")
     zinc_sk = f"ZINC#{now}#{zinc_id}"
-    lock = {"PK": f"OP#{op}", "SK": f"ZONE_INCIDENT_LOCK#{zone_id}"}
-    try:
+    created_now = _ignore_conditional(
+        table.put_item,
+        Item={**lock, "zoneIncidentId": zinc_id, "zoneIncidentSK": zinc_sk, "openedAt": now},
+        ConditionExpression="attribute_not_exists(PK) OR openedAt < :cutoff",
+        ExpressionAttributeValues={":cutoff": minus(now, minutes=window)},
+    )
+    if created_now:
         table.put_item(
-            Item={**lock, "zoneIncidentId": zinc_id, "zoneIncidentSK": zinc_sk, "openedAt": now},
-            ConditionExpression="attribute_not_exists(PK) OR openedAt < :cutoff",
-            ExpressionAttributeValues={":cutoff": minus(now, minutes=window)},
+            Item=to_ddb(
+                {
+                    "PK": f"OP#{op}",
+                    "SK": zinc_sk,
+                    "zoneIncidentId": zinc_id,
+                    "operationId": op,
+                    "zoneId": zone_id,
+                    "state": "OPEN",
+                    "createdAt": now,
+                    "incidentIds": all_ids,
+                    "openMembers": members,
+                    "machineIds": machines,
+                    "commonCause": cause,
+                    "evidence": analysis.get("evidence", []),
+                }
+            )
         )
-    except Exception as exc:
-        if not is_conditional_failure(exc):
-            raise
+    else:
         existing = from_ddb(table.get_item(Key=lock)["Item"])
+        zinc_id, zinc_sk = existing["zoneIncidentId"], existing["zoneIncidentSK"]
         table.update_item(
-            Key={"PK": f"OP#{op}", "SK": existing["zoneIncidentSK"]},
+            Key={"PK": f"OP#{op}", "SK": zinc_sk},
             UpdateExpression="ADD incidentIds :all, machineIds :m, openMembers :inc",
             ExpressionAttributeValues={":all": all_ids, ":inc": members, ":m": machines},
         )
-        for member in to_link:
-            _link_incident(table, member, existing["zoneIncidentId"], existing["zoneIncidentSK"])
-        return {"created": False, "zoneIncidentId": existing["zoneIncidentId"]}
-
-    diagnosis = created["diagnosis"]
-    table.put_item(
-        Item=to_ddb(
-            {
-                "PK": f"OP#{op}",
-                "SK": zinc_sk,
-                **keys.incident_gsi1(op, "OPEN", "CRITICAL", now),
-                "kind": "ZONE",
-                "zoneIncidentId": zinc_id,
-                "operationId": op,
-                "zoneId": zone_id,
-                "severity": "CRITICAL",
-                "state": "OPEN",
-                "createdAt": now,
-                "incidentIds": all_ids,
-                "openMembers": members,
-                "machineIds": machines,
-                "hypothesis": diagnosis.get("zoneHypothesis")
-                or f"{len(machines)} maquinas con incidentes en {zone_id}",
-                "timeline": _timeline("DETECTED", now, machines=len(machines)),
-            }
-        )
-    )
     for member in to_link:
-        _link_incident(table, member, zinc_id, zinc_sk)
-    return {
-        "created": True,
-        "zoneIncidentId": zinc_id,
-        "machines": sorted(machines),
-        "hypothesis": diagnosis.get("zoneHypothesis"),
-    }
-
-
-def _link_incident(table: Any, inc: dict[str, Any], zinc_id: str, zinc_sk: str) -> None:
-    try:
-        table.update_item(
-            Key=_incident_key(inc["machineId"], inc["incidentSK"]),
-            UpdateExpression="SET zoneIncidentId = :z, zoneIncidentSK = :zsk",
+        _ignore_conditional(
+            table.update_item,
+            Key=_incident_key(member["machineId"], member["incidentSK"]),
+            UpdateExpression="SET zoneIncidentId = :z, zoneIncidentSK = :zsk, aiDiagnosis.zoneCause = :c, "
+            "correlatedIncidents = :corr",
             ConditionExpression="attribute_exists(PK)",
-            ExpressionAttributeValues={":z": zinc_id, ":zsk": zinc_sk},
+            ExpressionAttributeValues={
+                ":z": zinc_id,
+                ":zsk": zinc_sk,
+                ":c": cause,
+                ":corr": sorted(members - {member["incidentId"]}),
+            },
         )
-    except Exception as exc:
-        if not is_conditional_failure(exc):
-            raise
+    return {"created": created_now, "zoneIncidentId": zinc_id, "machines": sorted(machines), "hypothesis": cause}
 
 
 # ----------------------------------------------------------------------------------------------- parts
-def reserve_parts(table: Any, payload: dict[str, Any], catalog: dict[str, Any], now: str) -> dict[str, Any]:
-    """Atomic reservation, nearest warehouse first (P3). Idempotent per incident via reservations.{incidentId}.
+def reserve_parts(table: Any, payload: dict[str, Any], fleet: FleetConfig, now: str) -> dict[str, Any]:
+    """One part for the diagnosed component (fleet-config parts[].component), from the warehouse that serves the
+    zone first (fleet-config warehouses), then any other (P3).
 
     The guide's condition `qty - reserved >= :n` is not valid DynamoDB syntax (no arithmetic in conditions),
-    so stock keeps an explicit `available` counter: available = qty - reserved.
+    so stock keeps `available` (= qty - reserved). `reservations.{incidentId}` makes retries idempotent.
     """
     inc = payload["incident"]
-    profile = payload.get("context", {}).get("profile", {})
-    wanted = payload["created"]["diagnosis"].get("recommendedParts", [])
-    warehouses = catalog.get("warehouses", [])
-    if profile.get("lat") is not None:
-        warehouses = sorted(warehouses, key=lambda w: haversine_km(profile["lat"], profile["lon"], w["lat"], w["lon"]))
+    component = payload["created"]["diagnosis"]["diagnosis"]["component"]
+    wanted = [{"partId": p.part_id, "qty": 1} for p in fleet.parts_for_component(component)][:1]
+    warehouses = fleet.warehouses_for_zone(inc["zoneId"])
     reserved, missing = [], []
     for part in wanted:
         done = None
         for wh in warehouses:
-            stock_key = {"PK": f"PART#{part['partId']}", "SK": f"STOCK#{wh['warehouseId']}"}
-            try:
-                table.update_item(
-                    Key=stock_key,
-                    UpdateExpression="SET available = available - :n, reserved = reserved + :n, "
-                    "reservations.#inc = :n, updatedAt = :now",
-                    ConditionExpression="available >= :n AND attribute_not_exists(reservations.#inc)",
-                    ExpressionAttributeNames={"#inc": inc["incidentId"]},
-                    ExpressionAttributeValues={":n": part["qty"], ":now": now},
-                )
-                done = {"partId": part["partId"], "warehouseId": wh["warehouseId"], "qty": part["qty"]}
-            except Exception as exc:
-                if not is_conditional_failure(exc):
-                    raise
-                row = table.get_item(Key=stock_key).get("Item") or {}
-                if inc["incidentId"] in (row.get("reservations") or {}):  # retry of a reservation that succeeded
-                    done = {"partId": part["partId"], "warehouseId": wh["warehouseId"], "qty": part["qty"]}
-            if done:
-                reserved.append(done)
+            stock_key = {"PK": f"PART#{part['partId']}", "SK": f"STOCK#{wh}"}
+            ok = _ignore_conditional(
+                table.update_item,
+                Key=stock_key,
+                UpdateExpression="SET available = available - :n, reserved = reserved + :n, "
+                "reservations.#inc = :n, updatedAt = :now",
+                ConditionExpression="available >= :n AND attribute_not_exists(reservations.#inc)",
+                ExpressionAttributeNames={"#inc": inc["incidentId"]},
+                ExpressionAttributeValues={":n": part["qty"], ":now": now},
+            )
+            row = {} if ok else (table.get_item(Key=stock_key).get("Item") or {})
+            if ok or inc["incidentId"] in (row.get("reservations") or {}):  # retry of a successful reservation
+                done = {"partId": part["partId"], "warehouse": wh, "qty": part["qty"]}
                 break
-        if not done:
+        if done:
+            reserved.append(done)
+        else:
             missing.append(part)
-    events = _timeline("PARTS_RESERVED", now, parts=len(reserved)) if reserved else []
+    events = _event("PARTS_RESERVED", now, parts=len(reserved)) if reserved else []
     if missing:
-        events += _timeline("PARTS_MISSING", now, parts=[m["partId"] for m in missing])
+        events += _event("PARTS_MISSING", now, parts=[m["partId"] for m in missing])
     table.update_item(
         Key=_incident_key(inc["machineId"], inc["incidentSK"]),
-        UpdateExpression="SET partsReserved = :r, partsMissing = :m, timeline = list_append(timeline, :ev)",
+        UpdateExpression="SET partsReserved = :r, partsMissing = :m, activity = list_append(activity, :ev)",
         ExpressionAttributeValues={":r": reserved, ":m": missing, ":ev": events},
     )
-    return {"reserved": reserved, "missing": missing, "hasMissing": bool(missing)}
+    return {"reserved": reserved, "missing": missing, "hasMissing": bool(missing), "component": component}
 
 
 def _settle_parts(
@@ -484,23 +588,20 @@ def _settle_parts(
     for r in reserved:
         take = min(used_qty.get(r["partId"], 0), int(r["qty"]))
         used_qty[r["partId"]] = used_qty.get(r["partId"], 0) - take
-        try:
-            table.update_item(
-                Key={"PK": f"PART#{r['partId']}", "SK": f"STOCK#{r['warehouseId']}"},
-                UpdateExpression="SET qty = qty - :take, reserved = reserved - :res, available = available + :back, "
-                "updatedAt = :now REMOVE reservations.#inc",
-                ConditionExpression="attribute_exists(reservations.#inc)",
-                ExpressionAttributeNames={"#inc": incident_id},
-                ExpressionAttributeValues={
-                    ":take": take,
-                    ":res": int(r["qty"]),
-                    ":back": int(r["qty"]) - take,
-                    ":now": now,
-                },
-            )
-        except Exception as exc:
-            if not is_conditional_failure(exc):
-                raise
+        _ignore_conditional(
+            table.update_item,
+            Key={"PK": f"PART#{r['partId']}", "SK": f"STOCK#{r['warehouse']}"},
+            UpdateExpression="SET qty = qty - :take, reserved = reserved - :res, available = available + :back, "
+            "updatedAt = :now REMOVE reservations.#inc",
+            ConditionExpression="attribute_exists(reservations.#inc)",
+            ExpressionAttributeNames={"#inc": incident_id},
+            ExpressionAttributeValues={
+                ":take": take,
+                ":res": int(r["qty"]),
+                ":back": int(r["qty"]) - take,
+                ":now": now,
+            },
+        )
         if take:
             consumed.append({**r, "qty": take})
     return consumed
@@ -519,8 +620,8 @@ def store_task_token(table: Any, payload: dict[str, Any], now: str) -> dict[str,
 
 
 # ----------------------------------------------------------------------------------------------- close
-def _recurrence(table: Any, inc: dict[str, Any], failure_mode: str | None, days: int) -> str | None:
-    if not failure_mode or failure_mode == "UNKNOWN":
+def _recurrence(table: Any, inc: dict[str, Any], component: str | None, days: int) -> str | None:
+    if not component or component == "UNKNOWN":
         return None
     since = minus(inc["createdAt"], days=days)
     res = table.query(
@@ -531,8 +632,9 @@ def _recurrence(table: Any, inc: dict[str, Any], failure_mode: str | None, days:
     for row in res["Items"]:
         if (
             row.get("incidentId") != inc["incidentId"]
-            and row.get("state") == "CLOSED"
-            and row.get("failureMode") == failure_mode
+            and row.get("GSI1PK", "").endswith("#CLOSED")
+            and not row.get("flowFailed")
+            and (row.get("aiDiagnosis") or {}).get("component") == component
         ):
             return row["incidentId"]
     return None
@@ -545,7 +647,7 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     if not row:
         raise TaskError(f"Incident {inc['incidentId']} not found")
     row = from_ddb(row)
-    if row.get("state") == "CLOSED":
+    if row.get("GSI1PK", "").endswith("#CLOSED"):
         return {"incidentId": inc["incidentId"], "alreadyClosed": True, "downtimeMinutes": row.get("downtimeMinutes")}
 
     resolution = payload.get("resolution") or {}
@@ -554,62 +656,67 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     reserved = row.get("partsReserved", [])
     used_input = resolution.get("partsUsed")
     used = _settle_parts(table, inc["incidentId"], reserved, reserved if used_input is None else used_input, now)
-    recurrence = _recurrence(table, inc, row.get("failureMode"), int(inc["settings"].get("recurrenceWindowDays", 30)))
+    component = (row.get("aiDiagnosis") or {}).get("component")
+    recurrence = _recurrence(table, inc, component, int(inc["settings"].get("recurrenceWindowDays", 30)))
     tech = row.get("assignedTech")
     if tech:
         techs.release(table, tech, inc["operationId"], inc["incidentId"])
 
-    maint_id = _new_id("MNT")
-    table.put_item(
+    maint_id = f"MNT-{inc['incidentId']}"
+    profile = from_ddb(table.get_item(Key=keys.machine_profile(inc["machineId"])).get("Item") or {})
+    diag = row.get("aiDiagnosis") or {}
+    _ignore_conditional(
+        table.put_item,
         Item=to_ddb(
-            {
-                "PK": keys.machine_pk(inc["machineId"]),
-                "SK": keys.maintenance_sk(resolved_at[:10], maint_id),
-                "maintenanceId": maint_id,
-                "type": "CORRECTIVE",
-                "incidentId": inc["incidentId"],
-                "machineId": inc["machineId"],
-                "date": resolved_at[:10],
-                "at": resolved_at,
-                "techId": tech,
-                "failureMode": row.get("failureMode"),
-                "partsUsed": used,
-                "downtimeMinutes": downtime,
-                "notes": resolution.get("notes"),
-            }
-        )
+            _clean(
+                {
+                    "PK": keys.machine_pk(inc["machineId"]),
+                    "SK": keys.maintenance_sk(resolved_at[:10], maint_id),
+                    "maintenanceId": maint_id,
+                    "type": "CORRECTIVE",
+                    "date": resolved_at,
+                    "incidentId": inc["incidentId"],
+                    "machineId": inc["machineId"],
+                    "engineHours": profile.get("engineHours"),
+                    "techId": tech,
+                    "partsReplaced": [p["partId"] for p in used for _ in range(int(p["qty"]))],
+                    "notes": resolution.get("notes")
+                    or f"{diag.get('component', '')}: {diag.get('recommendedAction', '')}",
+                    "downtimeMinutes": downtime,
+                }
+            )
+        ),
+        ConditionExpression="attribute_not_exists(PK)",
     )
 
-    updates = [
-        "#st = :closed",
+    sets = [
+        "#st = :resolved",
         "GSI1PK = :gsi1pk",
         "closedAt = :now",
         "downtimeMinutes = :dt",
         "partsUsed = :used",
-        "timeline = list_append(timeline, :ev)",
+        "activity = list_append(activity, :ev)",
         "maintenanceId = :mnt",
     ]
     values: dict[str, Any] = {
-        ":closed": "CLOSED",
+        ":resolved": "RESOLVED",
         ":gsi1pk": f"OP#{inc['operationId']}#INCIDENT#CLOSED",
         ":now": now,
         ":dt": downtime,
         ":used": used,
         ":mnt": maint_id,
-        ":ev": _timeline("CLOSED", now, downtimeMinutes=downtime),
+        ":ev": _event("CLOSED", now, downtimeMinutes=downtime),
     }
     if recurrence:
-        updates.append("recurrenceOf = :rec")
+        sets.append("recurrenceOf = :rec")
         values[":rec"] = recurrence
     table.update_item(
         Key=key,
-        UpdateExpression="SET " + ", ".join(updates) + " REMOVE taskToken, pendingStage",
+        UpdateExpression="SET " + ", ".join(sets) + " REMOVE taskToken, pendingStage",
         ExpressionAttributeNames={"#st": "state"},
         ExpressionAttributeValues=to_ddb(values),
     )
-
     release_claim_only(table, inc)
-
     if row.get("zoneIncidentSK"):
         _leave_zone_incident(table, inc, row["zoneIncidentSK"], now)
     if store is not None:
@@ -624,19 +731,6 @@ def close_incident(table: Any, payload: dict[str, Any], now: str, store: Any = N
     }
 
 
-def release_claim_only(table: Any, inc: dict[str, Any]) -> None:
-    try:
-        table.update_item(
-            Key=keys.machine_profile(inc["machineId"]),
-            UpdateExpression="REMOVE openIncidentId, openIncidentSK, openIncidentSeverity",
-            ConditionExpression="openIncidentId = :id",
-            ExpressionAttributeValues={":id": inc["incidentId"]},
-        )
-    except Exception as exc:
-        if not is_conditional_failure(exc):
-            raise
-
-
 def _leave_zone_incident(table: Any, inc: dict[str, Any], zinc_sk: str, now: str) -> None:
     zkey = {"PK": f"OP#{inc['operationId']}", "SK": zinc_sk}
     row = table.update_item(
@@ -645,30 +739,22 @@ def _leave_zone_incident(table: Any, inc: dict[str, Any], zinc_sk: str, now: str
         ExpressionAttributeValues={":inc": {inc["incidentId"]}},
         ReturnValues="ALL_NEW",
     )
-    if not row.get("Attributes", {}).get("openMembers"):
-        try:
-            table.update_item(
-                Key=zkey,
-                UpdateExpression="SET #st = :closed, GSI1PK = :pk, closedAt = :now, "
-                "timeline = list_append(timeline, :ev)",
-                ConditionExpression="#st = :open",
-                ExpressionAttributeNames={"#st": "state"},
-                ExpressionAttributeValues={
-                    ":closed": "CLOSED",
-                    ":open": "OPEN",
-                    ":now": now,
-                    ":pk": f"OP#{inc['operationId']}#INCIDENT#CLOSED",
-                    ":ev": _timeline("CLOSED", now),
-                },
-            )
-            table.delete_item(
-                Key={"PK": f"OP#{inc['operationId']}", "SK": f"ZONE_INCIDENT_LOCK#{inc['zoneId']}"},
-                ConditionExpression="zoneIncidentSK = :zsk",
-                ExpressionAttributeValues={":zsk": zinc_sk},
-            )
-        except Exception as exc:
-            if not is_conditional_failure(exc):
-                raise
+    if row.get("Attributes", {}).get("openMembers"):
+        return
+    if _ignore_conditional(
+        table.update_item,
+        Key=zkey,
+        UpdateExpression="SET #st = :closed, closedAt = :now",
+        ConditionExpression="#st = :open",
+        ExpressionAttributeNames={"#st": "state"},
+        ExpressionAttributeValues={":closed": "RESOLVED", ":open": "OPEN", ":now": now},
+    ):
+        _ignore_conditional(
+            table.delete_item,
+            Key={"PK": f"OP#{inc['operationId']}", "SK": f"ZONE_INCIDENT_LOCK#{inc['zoneId']}"},
+            ConditionExpression="zoneIncidentSK = :zsk",
+            ExpressionAttributeValues={":zsk": zinc_sk},
+        )
 
 
 def clear_simulated_faults(store: Any, machine_id: str) -> None:

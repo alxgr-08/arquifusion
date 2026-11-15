@@ -15,7 +15,7 @@ from boto3.dynamodb.conditions import Key
 
 DUE_WITHIN_HOURS = 24
 # Standard preventive kit (filters). Edit here or move to SSM if the team wants it configurable.
-PREVENTIVE_KIT = [{"partId": "FLT-HID-01", "qty": 1}, {"partId": "FLT-DSL-05", "qty": 1}]
+PREVENTIVE_KIT = [{"partId": "FLT-HID-01", "qty": 1}, {"partId": "FLT-FUE-02", "qty": 1}]
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -23,7 +23,10 @@ def _clamp(value: float, low: float, high: float) -> float:
 
 
 def usage_factor(kpis: list[dict[str, Any]], severity: str | None = None) -> tuple[float, dict[str, float]]:
-    """KPI fields expected from af_out.daily_kpis: operatingHours, overuseHours, watchHours, loadRatio."""
+    """KPI# fields (bigquery-sync-back): operatingHours, overuseHours.
+
+    Optional if Rol 3 adds them: watchHours, loadRatio.
+    """
     operating = sum(float(k.get("operatingHours", 0) or 0) for k in kpis)
     terms = {"load": 0.0, "overuse": 0.0, "watch": 0.0}
     if kpis and operating > 0:
@@ -120,7 +123,10 @@ def create_maintenance_order(table: Any, payload: dict[str, Any], now: str) -> d
                     "state": "SCHEDULED",
                     "machineId": m["machineId"],
                     "zoneId": m.get("zoneId"),
-                    "date": date,
+                    "date": now,
+                    "engineHours": m.get("engineHours"),
+                    "partsReplaced": [p["partId"] for p in parts],
+                    "notes": f"Preventivo por uso: factor {m['usageFactor']}, quedan {m['remainingHours']} h",
                     "createdAt": now,
                     "usageFactor": m["usageFactor"],
                     "effectiveIntervalHours": m["effectiveIntervalHours"],
@@ -173,7 +179,7 @@ def plan_restock(table: Any, payload: dict[str, Any], now: str) -> dict[str, Any
         rows = [from_ddb(i) for i in table.query(KeyConditionExpression=Key("PK").eq(f"PART#{part_id}"))["Items"]]
         stock = {r["warehouseId"]: r for r in rows if r["SK"].startswith("STOCK#")}
         forecast = {
-            r["SK"].split("#")[1]: float(r.get("demand", r.get("forecast", 0)) or 0)
+            r["SK"].split("#")[1]: float(r.get("forecastQty", r.get("demand", 0)) or 0)
             for r in rows
             if r["SK"].startswith("FORECAST#") and r["SK"].endswith(iso_week)
         }

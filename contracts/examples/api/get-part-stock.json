@@ -1,34 +1,31 @@
 {
-  "part": {
-    "partId": "BRG-KIT-02",
-    "name": "Kit de rodamientos",
-    "unitCostUsd": 1850,
-    "leadTimeDays": 10
-  },
+  "partId": "BRG-SPH-22",
+  "name": "Rodamiento esférico",
+  "component": "BEARING",
   "warehouses": [
     {
       "warehouseId": "WH-NORTE",
-      "forecast": [],
-      "qty": 2,
-      "available": 1,
+      "qty": 1,
       "reserved": 1,
-      "updatedAt": "2026-11-13T14:06:45Z"
+      "reorderPoint": 1,
+      "forecastNext4Weeks": [
+        2,
+        0,
+        0,
+        0
+      ]
     },
     {
       "warehouseId": "WH-SUR",
-      "forecast": [
-        {
-          "week": "2026-W47",
-          "demand": 1.6,
-          "lower": 0.7,
-          "upper": 2.8,
-          "source": "BQML_ARIMA_PLUS"
-        }
-      ],
-      "qty": 0,
-      "available": 0,
+      "qty": 1,
       "reserved": 0,
-      "updatedAt": "2026-11-10T11:08:35Z"
+      "reorderPoint": 1,
+      "forecastNext4Weeks": [
+        0,
+        0,
+        0,
+        0
+      ]
     }
   ]
 }

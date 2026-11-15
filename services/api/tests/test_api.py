@@ -1,6 +1,8 @@
-"""API tests, including the technician ack that resumes the real incident Step Function."""
+"""API tests against the shapes of frontend/src/api/types.ts, including the technician ack that resumes the real
+incident Step Function."""
 
 import json
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -9,10 +11,27 @@ import pytest
 from af_shared.fakes import Recorder
 from botocore.exceptions import ClientError
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "statemachines" / "tests"))
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "statemachines" / "tests"))
+from asl_runner import Paused  # noqa: E402
 from flow_harness import Harness, anomaly_event  # noqa: E402
 
 NOW = "2026-11-13T16:00:00Z"
+
+
+def ts_fields(interface: str) -> set[str]:
+    """Field names of an interface in frontend/src/api/types.ts (optional ones end with '?')."""
+    src = (ROOT / "frontend/src/api/types.ts").read_text(encoding="utf-8")
+    body = re.search(rf"export interface {interface} \{{(.*?)\n\}}", src, re.S).group(1)
+    return {m.group(1) + ("?" if m.group(2) else "") for m in re.finditer(r"^\s+(\w+)(\??):", body, re.M)}
+
+
+def assert_shape(obj: dict, interface: str) -> None:
+    fields = ts_fields(interface)
+    required = {f for f in fields if not f.endswith("?")}
+    allowed = {f.rstrip("?") for f in fields}
+    assert required <= set(obj), f"{interface} missing {required - set(obj)}"
+    assert set(obj) <= allowed, f"{interface} has unexpected {set(obj) - allowed}"
 
 
 def req(
@@ -40,12 +59,16 @@ def api(load_handler):
     return load_handler("api")
 
 
-def call(api, h: Harness, sfn, *args, **kwargs) -> tuple[int, dict]:
+def call(api, h: Harness, sfn, *args, **kwargs) -> tuple[int, object]:
     res = api.route(req(*args, **kwargs), h.table, sfn, NOW)
     return res["statusCode"], json.loads(res["body"])
 
 
-class StepFunctionsViaApi:
+def hold(_info):
+    raise Paused()
+
+
+class TechnicianInTheWeb:
     """on_wait handler: the technician presses the buttons in the web, which calls POST .../ack."""
 
     def __init__(self, api, h: Harness) -> None:
@@ -55,12 +78,9 @@ class StepFunctionsViaApi:
 
     def __call__(self, info: dict) -> dict:
         inc = info["payload"]["incident"]
-        event = "ARRIVED" if info["payload"]["stage"] == "ARRIVAL" else "RESOLVED"
-        body = {"event": event, "notes": "ok"}
-        if event == "RESOLVED":
-            body["partsUsed"] = [{"partId": "BRG-KIT-02", "qty": 1}]
+        action = "ARRIVED" if info["payload"]["stage"] == "ARRIVAL" else "RESOLVED"
         path = f"/machines/{inc['machineId']}/incidents/{inc['incidentId']}/ack"
-        status, out = call(self.api, self.h, self.sfn, "POST", path, groups="[TECHNICIAN]", body=body)
+        status, out = call(self.api, self.h, self.sfn, "POST", path, groups="[TECHNICIAN]", body={"action": action})
         self.responses.append((status, out))
         assert status == 200, out
         sent = self.sfn.of("send_task_success")[-1]
@@ -68,37 +88,36 @@ class StepFunctionsViaApi:
         return json.loads(sent["output"])
 
 
-def test_technician_acks_drive_the_step_function_to_closed(api) -> None:
+def test_technician_acks_drive_the_step_function_and_return_the_incident(api) -> None:
     h = Harness()
-    driver = StepFunctionsViaApi(api, h)
-    runner, _ = h.run_incident(anomaly_event(), driver)
+    web = TechnicianInTheWeb(api, h)
+    runner, _ = h.run_incident(anomaly_event(), web)
     assert runner.visited[-1] == "Done"
-    assert [r[1]["state"] for r in driver.responses] == ["IN_PROGRESS", "RESOLVED"]
-    inc = h.incident("EXC-0042")
-    assert inc["state"] == "CLOSED"
-    events = [e["event"] for e in inc["timeline"]]
-    assert events.index("ARRIVED") < events.index("RESOLVED") < events.index("CLOSED")
-    assert "taskToken" not in inc
+    assert [r[1]["state"] for r in web.responses] == ["IN_PROGRESS", "RESOLVED"]
+    for _, incident in web.responses:
+        assert_shape(incident, "Incident")
+    status, history = call(api, h, Recorder(), "GET", "/machines/EXC-0042/incidents")
+    closed = history[0]
+    assert closed["state"] == "RESOLVED" and closed["downtimeMinutes"] >= 0
+    assert [e["event"] for e in closed["timeline"]] == ["DETECTED", "ASSIGNED", "ARRIVED", "RESOLVED"]
+    status, maintenance = call(api, h, Recorder(), "GET", "/machines/EXC-0042/maintenance")
+    assert_shape(maintenance[0], "Maintenance")
+    assert maintenance[0]["partsReplaced"] == ["BRG-SPH-22"]
 
 
 def test_ack_rejects_wrong_stage_duplicates_and_expired_tokens(api) -> None:
     h = Harness()
     sfn = Recorder()
-    from asl_runner import Paused
-
-    def hold(_info):
-        raise Paused()
-
     with pytest.raises(Paused):
         h.run_incident(anomaly_event(), hold)
     inc = h.incident("EXC-0042")
     path = f"/machines/EXC-0042/incidents/{inc['incidentId']}/ack"
-    status, body = call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"event": "RESOLVED"})
+    status, body = call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "RESOLVED"})
     assert status == 409 and body["error"]["code"] == "WRONG_STAGE"
-    assert call(api, h, sfn, "POST", path, groups="[OPERATOR]", body={"event": "ARRIVED"})[0] == 403
-    other = {"custom:techId": "T-01"}
-    assert call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"event": "ARRIVED"}, claims=other)[0] == 403
-    assert call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"event": "NOPE"})[0] == 400
+    assert call(api, h, sfn, "POST", path, groups="[OPERATOR]", body={"action": "ARRIVED"})[0] == 403
+    other = {"custom:techId": "T-03"}
+    assert call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "ARRIVED"}, claims=other)[0] == 403
+    assert call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "NOPE"})[0] == 400
     assert (
         call(
             api,
@@ -107,7 +126,7 @@ def test_ack_rejects_wrong_stage_duplicates_and_expired_tokens(api) -> None:
             "POST",
             "/machines/EXC-0042/incidents/INC-zzzz/ack",
             groups="[TECHNICIAN]",
-            body={"event": "ARRIVED"},
+            body={"action": "ARRIVED"},
         )[0]
         == 404
     )
@@ -119,20 +138,15 @@ def test_ack_rejects_wrong_stage_duplicates_and_expired_tokens(api) -> None:
             )
         }
     )
-    status, body = call(api, h, expired, "POST", path, groups="[MAINT_LEAD]", body={"event": "ARRIVED"})
+    status, body = call(api, h, expired, "POST", path, groups="[MAINT_LEAD]", body={"action": "ARRIVED"})
     assert status == 409 and body["error"]["code"] == "TASK_EXPIRED"
-    status, body = call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"event": "ARRIVED"})
+    status, body = call(api, h, sfn, "POST", path, groups="[TECHNICIAN]", body={"action": "ARRIVED"})
     assert status == 409 and body["error"]["code"] in ("ALREADY_CONFIRMED", "WRONG_STAGE")
 
 
-def test_read_endpoints(api) -> None:
+def test_read_endpoints_match_the_frontend_types(api) -> None:
     h = Harness()
     sfn = Recorder()
-    from asl_runner import Paused
-
-    def hold(_info):
-        raise Paused()
-
     with pytest.raises(Paused):
         h.run_incident(anomaly_event(severity="CRITICAL"), hold)
     for minute in range(3):
@@ -141,8 +155,11 @@ def test_read_endpoints(api) -> None:
             Item={
                 "PK": "MACHINE#EXC-0042",
                 "SK": f"READING#{ts}",
-                "timestamp": ts,
+                "messageId": "m",
+                "status": "OPERATING",
                 "metrics": {"temperatureC": Decimal("92.4")},
+                "healthScore": 40,
+                "severity": "WARNING",
                 "expiresAt": 1,
             }
         )
@@ -152,46 +169,63 @@ def test_read_endpoints(api) -> None:
             "SK": "KPI#2026-11-12",
             "GSI1PK": "OP#MINA-NORTE#KPI#2026-11-12",
             "GSI1SK": "EXC-0042",
-            "utilization": Decimal("0.81"),
+            "machineId": "EXC-0042",
+            "model": "EXC-320",
+            "date": "2026-11-12",
+            "utilizationPct": Decimal("81"),
+            "operatingHours": Decimal("19.4"),
+            "idleHours": Decimal("4.6"),
+            "overuseHours": 0,
+            "tonsMoved": 1800,
+            "fuelLitersPerTon": Decimal("1.8"),
+            "fuelLitersPerTonModel": Decimal("1.7"),
+            "costPerHour": 190,
+            "fuelAnomaly": False,
         }
     )
-    h.table.put_item(Item={"PK": "PART#BRG-KIT-02", "SK": "FORECAST#WH-SUR#2026-W47", "demand": 2})
+    h.table.put_item(Item={"PK": "PART#BRG-SPH-22", "SK": "FORECAST#WH-NORTE#2026-W47", "forecastQty": Decimal("2.4")})
 
-    status, body = call(api, h, sfn, "GET", "/operations/MINA-NORTE/machines")
-    assert status == 200 and body["count"] == 13 and {"lat", "lon", "status", "healthScore"} <= set(body["items"][0])
-    status, body = call(api, h, sfn, "GET", "/operations/MINA-NORTE/machines", query={"status": "operating"})
-    assert body["count"] == 13
-    status, body = call(api, h, sfn, "GET", "/operations/MINA-NORTE/machines", query={"limit": "5"})
-    assert body["count"] == 5 and body["nextToken"]
-    status, page2 = call(
-        api, h, sfn, "GET", "/operations/MINA-NORTE/machines", query={"limit": "5", "nextToken": body["nextToken"]}
-    )
-    assert {m["machineId"] for m in page2["items"]}.isdisjoint({m["machineId"] for m in body["items"]})
-
+    status, machines = call(api, h, sfn, "GET", "/operations/MINA-NORTE/machines")
+    assert status == 200 and len(machines) == 12
+    for m in machines:
+        assert_shape(m, "Machine")
+    status, operating = call(api, h, sfn, "GET", "/operations/MINA-NORTE/machines", query={"status": "OPERATING"})
+    assert len(operating) == 12
     status, machine = call(api, h, sfn, "GET", "/machines/EXC-0042")
-    assert status == 200 and machine["openIncidentSeverity"] == "CRITICAL" and "PK" not in machine
+    assert machine["openIncidentId"] and machine["maintenanceIntervalHours"] == 500
     assert call(api, h, sfn, "GET", "/machines/NOPE-0000")[0] == 404
 
     status, readings = call(api, h, sfn, "GET", "/machines/EXC-0042/readings", query={"from": "2026-11-13T15:50:30Z"})
-    assert [r["timestamp"] for r in readings["items"]] == ["2026-11-13T15:51:00Z", "2026-11-13T15:52:00Z"]
-    assert "expiresAt" not in readings["items"][0]
+    assert [r["timestamp"] for r in readings] == ["2026-11-13T15:51:00Z", "2026-11-13T15:52:00Z"]
+    assert_shape(readings[0], "Reading")
 
     status, incidents = call(api, h, sfn, "GET", "/operations/MINA-NORTE/incidents")
-    assert incidents["count"] == 1 and incidents["items"][0]["severity"] == "CRITICAL"
-    assert "taskToken" not in incidents["items"][0] and "anomaly" not in incidents["items"][0]
-    status, history = call(api, h, sfn, "GET", "/machines/EXC-0042/incidents")
-    assert history["items"][0]["assignedTech"]
+    assert len(incidents) == 1 and incidents[0]["severity"] == "CRITICAL" and incidents[0]["state"] == "ASSIGNED"
+    assert_shape(incidents[0], "Incident")
+    assert_shape(incidents[0]["aiDiagnosis"], "AiDiagnosis")
+    assert incidents[0]["partsReserved"] == [{"partId": "BRG-SPH-22", "warehouse": "WH-NORTE", "qty": 1}]
+    assert call(api, h, sfn, "GET", "/operations/MINA-NORTE/incidents", query={"state": "CLOSED"})[1] == []
 
-    status, techs = call(api, h, sfn, "GET", "/operations/MINA-NORTE/technicians", query={"availability": "ASSIGNED"})
-    assert [t["techId"] for t in techs["items"]] == [history["items"][0]["assignedTech"]]
+    status, techs = call(api, h, sfn, "GET", "/operations/MINA-NORTE/technicians")
+    for t in techs:
+        assert_shape(t, "Technician")
+    busy = [t for t in techs if t["availability"] == "BUSY"]
+    assert [(t["techId"], t["queue"]) for t in busy] == [("T-07", 1)]
 
-    status, stock = call(api, h, sfn, "GET", "/parts/BRG-KIT-02/stock")
-    sur = next(w for w in stock["warehouses"] if w["warehouseId"] == "WH-SUR")
-    assert (sur["available"], sur["reserved"], sur["forecast"][0]["week"]) == (0, 1, "2026-W47")
-    assert call(api, h, sfn, "GET", "/parts/NOPE/stock")[0] == 404
+    status, parts = call(api, h, sfn, "GET", "/parts", groups="[MAINT_LEAD]")
+    assert {p["partId"] for p in parts} == {"FLT-HID-01", "BRG-SPH-22", "FLT-FUE-02", "CLT-RAD-05", "INJ-DSL-07"}
+    bearing = next(p for p in parts if p["partId"] == "BRG-SPH-22")
+    assert_shape(bearing, "PartStock")
+    north = next(w for w in bearing["warehouses"] if w["warehouseId"] == "WH-NORTE")
+    assert_shape(north, "WarehouseStock")
+    assert (north["qty"], north["reserved"], north["forecastNext4Weeks"][0]) == (2, 1, 2)
+    assert len(north["forecastNext4Weeks"]) == 4
+    assert call(api, h, sfn, "GET", "/parts/BRG-SPH-22/stock", groups="[MAINT_LEAD]")[1] == bearing
+    assert call(api, h, sfn, "GET", "/parts/NOPE/stock", groups="[MAINT_LEAD]")[0] == 404
 
     status, kpis = call(api, h, sfn, "GET", "/operations/MINA-NORTE/kpis")
-    assert kpis["date"] == "2026-11-12" and kpis["items"][0]["utilization"] == 0.81
+    assert kpis[0]["fuelLitersPerTonFleet"] == 1.7
+    assert ts_fields("MachineKpi") <= set(kpis[0])
     assert call(api, h, sfn, "GET", "/operations/MINA-NORTE/kpis", groups="[OPERATOR]")[0] == 403
 
 

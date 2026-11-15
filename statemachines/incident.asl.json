@@ -215,7 +215,7 @@
       "Next": "AIDiagnosis"
     },
     "AIDiagnosis": {
-      "Comment": "af-dev-ai-diagnosis (Rol 3, Bedrock/Gemini). Any error or timeout falls back to rules",
+      "Comment": "af-dev-ai-diagnosis (Rol 3, contracts/ai-diagnosis-request.schema.json). Errors/timeouts fall back to rules",
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
@@ -224,10 +224,10 @@
           "schemaVersion": "1.0",
           "incidentId.$": "$.incident.incidentId",
           "anomaly.$": "$.incident.anomaly",
-          "machine.$": "$.context.profile",
-          "history.$": "$.context.history",
-          "zone.$": "$.context.zone",
-          "candidateFailureModes.$": "$.context.profile.candidateFailureModes"
+          "machine.$": "$.context.profile.aiMachine",
+          "context.$": "$.context.profile.aiContext",
+          "history.$": "$.context.history.aiHistory",
+          "zoneCorrelation.$": "$.context.zone.aiZoneCorrelation"
         }
       },
       "TimeoutSeconds": 45,

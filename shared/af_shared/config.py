@@ -11,7 +11,6 @@ from typing import Any
 
 FLEET_CONFIG = "/af/sim/fleet-config"
 SIM_FAULTS = "/af/sim/faults"
-INCIDENT_CATALOG = "/af/incident/catalog"
 INCIDENT_SETTINGS = "/af/incident/settings"
 NOTIFY_TOPICS = "/af/notify/topics"
 

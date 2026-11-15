@@ -1,11 +1,12 @@
 """af-dev-fault-injector: POST /simulator/faults — inject or clear demo faults. Owner: Rol 2.
 
-Body examples:
-  {"machineId": "EXC-0042", "faultType": "BEARING_WEAR", "intensity": "WARNING"}
-  {"zoneId": "Z3", "faultType": "FUEL_CONTAMINATION", "intensity": "WARNING"}     # P11: every machine in Z3
-  {"action": "CLEAR", "machineId": "EXC-0042"}                                    # or no machineId = clear all
-Optional: "durationMinutes" (default 60), "sigma" (overrides intensity, in standard deviations).
-Active faults live in SSM /af/sim/faults; the simulator re-reads them every ~10 s.
+Body (what the frontend sends):
+  {"machineId": "EXC-0042", "faultType": "BEARING_WEAR"}       # BEARING_WEAR | OVERHEATING | HYDRAULIC_LEAK
+  {"machineId": "EXC-0042", "faultType": "FUEL_BATCH_ZONE"}    # P11: every machine in EXC-0042's zone
+  {"action": "CLEAR", "machineId": "EXC-0042"}                 # or no machineId = clear all
+Optional: "durationMinutes" (default 60), "intensity" (multiplier, default 1.0), "zoneId" instead of machineId.
+Extra demo types: SENSOR_FAILURE (temperature null), STOPPED.
+Active faults live in SSM /af/sim/faults; the simulator re-reads them every few seconds.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from af_shared.ddb import iso, parse_iso
 from af_shared.fleet import FleetConfig
 from af_shared.http import ApiError, error, json_body, require_group, respond
 from af_shared.log import get_logger
+from fleet_faults import FAULT_TYPES, ZONE_FAULTS
 
 logger = get_logger("fault-injector")
 _store = config.ParamStore()
@@ -49,25 +51,32 @@ def apply(body: dict[str, Any], cfg: FleetConfig, faults: list[dict[str, Any]], 
         raise ApiError(400, "INVALID_ACTION", "action must be INJECT or CLEAR")
 
     fault_type = body.get("faultType")
-    if fault_type not in cfg.fault_catalog:
-        raise ApiError(400, "UNKNOWN_FAULT", f"faultType must be one of {sorted(cfg.fault_catalog)}")
-    intensity = str(body.get("intensity", "WARNING")).upper()
-    if intensity not in cfg.fault_intensity:
-        raise ApiError(400, "INVALID_INTENSITY", f"intensity must be one of {sorted(cfg.fault_intensity)}")
+    if fault_type not in FAULT_TYPES:
+        raise ApiError(400, "UNKNOWN_FAULT", f"faultType must be one of {sorted(FAULT_TYPES)}")
+    try:
+        intensity = float(body.get("intensity", 1.0))
+    except (TypeError, ValueError) as exc:
+        raise ApiError(400, "INVALID_INTENSITY", "intensity must be a number (1.0 = normal)") from exc
+    if not 0.1 <= intensity <= 3:
+        raise ApiError(400, "INVALID_INTENSITY", "intensity must be between 0.1 and 3")
     duration = float(body.get("durationMinutes", 60))
     if not 1 <= duration <= 24 * 60:
         raise ApiError(400, "INVALID_DURATION", "durationMinutes must be between 1 and 1440")
 
+    zone_id = body.get("zoneId")
     if body.get("machineId"):
-        if cfg.machine(body["machineId"]) is None:
+        machine = cfg.machine(body["machineId"])
+        if machine is None:
             raise ApiError(404, "MACHINE_NOT_FOUND", f"Unknown machine {body['machineId']}")
-        targets = [body["machineId"]]
-    elif body.get("zoneId"):
-        targets = [m.machine_id for m in cfg.machines if m.zone_id == body["zoneId"]]
-        if not targets:
-            raise ApiError(404, "ZONE_NOT_FOUND", f"No machines in zone {body['zoneId']}")
-    else:
+        targets = [machine.machine_id]
+        if fault_type in ZONE_FAULTS:
+            zone_id = machine.zone_id
+    elif not zone_id:
         raise ApiError(400, "MISSING_TARGET", "Send machineId or zoneId")
+    if zone_id and (fault_type in ZONE_FAULTS or not body.get("machineId")):
+        targets = [m.machine_id for m in cfg.machines if m.zone_id == zone_id]
+        if not targets:
+            raise ApiError(404, "ZONE_NOT_FOUND", f"No machines in zone {zone_id}")
 
     fault_id = f"F-{secrets.token_hex(2)}"
     new = []
@@ -80,10 +89,8 @@ def apply(body: dict[str, Any], cfg: FleetConfig, faults: list[dict[str, Any]], 
             "startedAt": iso(now),
             "expiresAt": iso(now + timedelta(minutes=duration)),
         }
-        if body.get("sigma") is not None:
-            entry["sigma"] = float(body["sigma"])
-        if body.get("zoneId"):
-            entry["zoneId"] = body["zoneId"]
+        if zone_id:
+            entry["zoneId"] = zone_id
         new.append(entry)
 
     # one active fault per machine and type: re-injecting replaces it

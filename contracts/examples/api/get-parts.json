@@ -1,0 +1,157 @@
+[
+  {
+    "partId": "BRG-SPH-22",
+    "name": "Rodamiento esférico",
+    "component": "BEARING",
+    "warehouses": [
+      {
+        "warehouseId": "WH-NORTE",
+        "qty": 1,
+        "reserved": 1,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          2,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "warehouseId": "WH-SUR",
+        "qty": 1,
+        "reserved": 0,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "partId": "CLT-RAD-05",
+    "name": "Kit de radiador",
+    "component": "COOLING_SYSTEM",
+    "warehouses": [
+      {
+        "warehouseId": "WH-NORTE",
+        "qty": 3,
+        "reserved": 0,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "warehouseId": "WH-SUR",
+        "qty": 4,
+        "reserved": 0,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "partId": "FLT-FUE-02",
+    "name": "Filtro de combustible",
+    "component": "FUEL_SYSTEM",
+    "warehouses": [
+      {
+        "warehouseId": "WH-NORTE",
+        "qty": 14,
+        "reserved": 0,
+        "reorderPoint": 4,
+        "forecastNext4Weeks": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "warehouseId": "WH-SUR",
+        "qty": 9,
+        "reserved": 0,
+        "reorderPoint": 3,
+        "forecastNext4Weeks": [
+          2,
+          2,
+          2,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "partId": "FLT-HID-01",
+    "name": "Filtro hidráulico",
+    "component": "HYDRAULIC_SYSTEM",
+    "warehouses": [
+      {
+        "warehouseId": "WH-NORTE",
+        "qty": 6,
+        "reserved": 0,
+        "reorderPoint": 3,
+        "forecastNext4Weeks": [
+          2,
+          2,
+          2,
+          2
+        ]
+      },
+      {
+        "warehouseId": "WH-SUR",
+        "qty": 2,
+        "reserved": 0,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "partId": "INJ-DSL-07",
+    "name": "Inyector diésel",
+    "component": "ENGINE",
+    "warehouses": [
+      {
+        "warehouseId": "WH-NORTE",
+        "qty": 5,
+        "reserved": 0,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "warehouseId": "WH-SUR",
+        "qty": 4,
+        "reserved": 0,
+        "reorderPoint": 1,
+        "forecastNext4Weeks": [
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    ]
+  }
+]

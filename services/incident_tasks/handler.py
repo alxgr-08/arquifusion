@@ -19,10 +19,6 @@ _store = config.ParamStore()
 _table: Any = None
 
 
-def _catalog(store: config.ParamStore) -> dict[str, Any]:
-    return store.get_json(config.INCIDENT_CATALOG, default={"failureModes": [], "warehouses": []})
-
-
 def dispatch(action: str, event: dict[str, Any], table: Any, store: config.ParamStore, now: str) -> dict[str, Any]:
     match action:
         case "claim":
@@ -30,7 +26,7 @@ def dispatch(action: str, event: dict[str, Any], table: Any, store: config.Param
         case "release_claim":
             return incidents.release_claim(table, event, now)
         case "get_profile":
-            return incidents.get_profile(table, event, _catalog(store))
+            return incidents.get_profile(table, event)
         case "get_history":
             return incidents.get_history(table, event)
         case "find_zone_correlation":
@@ -42,7 +38,7 @@ def dispatch(action: str, event: dict[str, Any], table: Any, store: config.Param
         case "create_zone_incident":
             return incidents.create_zone_incident(table, event, now)
         case "reserve_parts":
-            return incidents.reserve_parts(table, event, _catalog(store), now)
+            return incidents.reserve_parts(table, event, incidents._fleet(store), now)
         case "store_task_token":
             return incidents.store_task_token(table, event, now)
         case "close_incident":

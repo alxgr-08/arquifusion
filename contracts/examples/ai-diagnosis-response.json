@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0",
+  "source": "RULES",
+  "modelId": null,
+  "diagnosis": {
+    "probableCause": "Probable desgaste de rodamiento: temperatura y vibración suben juntas.",
+    "component": "BEARING",
+    "confidence": "HIGH",
+    "recommendedAction": "Detener la máquina, inspeccionar rodamientos y lubricación; reemplazar si hay holgura.",
+    "stopMachine": true,
+    "estimatedRepairMinutes": 120
+  },
+  "zoneAnalysis": {
+    "isZoneIncident": true,
+    "commonCause": "Posible lote de combustible contaminado FB-1120.",
+    "evidence": ["3 máquinas con incidentes en Z3 en las últimas 2 h", "Todas usan el lote de combustible FB-1120"]
+  },
+  "messages": {
+    "OPERATOR": "Detén EXC-0042 de forma segura y espera al técnico.",
+    "TECHNICIAN": "EXC-0042 (Z3): probable desgaste de rodamiento. Temperatura 92.4 (base 78.1), vibración 7.8 (base 4.2). Llevar kit de rodamientos.",
+    "MAINT_LEAD": "Incidente CRITICAL en EXC-0042 (Z3): rodamiento. Reparación estimada 120 min.",
+    "SUPERVISOR": "EXC-0042 detenida en Z3. Incidente de zona: 3 máquinas afectadas, posible lote de combustible FB-1120.",
+    "MANAGER": "Incidente de zona en MINA-NORTE/Z3: 3 máquinas afectadas. Causa probable: lote de combustible FB-1120."
+  }
+}

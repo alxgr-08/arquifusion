@@ -12,6 +12,7 @@ build/
 # Node
 node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # Terraform
 .terraform/
@@ -38,3 +39,6 @@ service-account*.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated data
+analytics/synthetic/out/

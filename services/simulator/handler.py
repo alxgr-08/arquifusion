@@ -1,6 +1,8 @@
 """af-dev-simulator: publishes fleet telemetry every minute; machines with an injected fault every ~10 s.
 
 Trigger: EventBridge Scheduler (rate 1 minute). Lambda timeout: 60 s.
+Env: AF_SIM_RAMP_SECONDS (default 300: a fault reaches full strength in 5 min), AF_SIM_FAST_INTERVAL_SECONDS
+(default 15: machines with an active fault report every 15 s inside the minute; 0 = only once per minute).
 Ingest modes (env AF_INGEST_MODE):
   iot     (default) publish to AWS IoT Core topic arquifusion/{op}/{machineId}/telemetry
   direct  plan B if IoT Core is blocked: invoke health-evaluator async + put to Firehose
@@ -69,6 +71,8 @@ def run(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], None] = time.sleep,
     budget_seconds: float = 50.0,
+    ramp_seconds: float = 300,
+    fast_interval: int = 15,
 ) -> dict[str, int]:
     cfg = FleetConfig.model_validate(store.get_json(config.FLEET_CONFIG))
     faults = (store.get_json(config.SIM_FAULTS, default={"faults": []}, fresh=True) or {}).get("faults", [])
@@ -76,11 +80,11 @@ def run(
     published = 0
 
     if not fast_only:
-        batch = [simulate(cfg, m, start, faults) for m in cfg.machines]
+        batch = [simulate(cfg, m, start, faults, ramp_seconds) for m in cfg.machines]
         publisher.publish(batch)
         published += len(batch)
 
-    interval = cfg.demo.fast_interval_seconds if cfg.demo else 0
+    interval = fast_interval
     rounds = 0
     while interval and (clock() - start).total_seconds() + interval <= budget_seconds:
         sleep(interval)
@@ -89,7 +93,7 @@ def run(
         hot = [m for m in cfg.machines if active_faults(faults, m.machine_id, now)]
         if not hot:
             break
-        batch = [simulate(cfg, m, now, faults) for m in hot]
+        batch = [simulate(cfg, m, now, faults, ramp_seconds) for m in hot]
         publisher.publish(batch)
         published += len(batch)
         rounds += 1
@@ -100,4 +104,11 @@ def run(
 def handler(event: dict[str, Any], context: object) -> dict[str, int]:
     remaining = getattr(context, "get_remaining_time_in_millis", lambda: 60_000)() / 1000
     publisher = Publisher(os.environ.get("AF_INGEST_MODE", "iot"), _aws_clients())
-    return run(_store, publisher, fast_only=bool((event or {}).get("fastOnly")), budget_seconds=max(remaining - 8, 0))
+    return run(
+        _store,
+        publisher,
+        fast_only=bool((event or {}).get("fastOnly")),
+        budget_seconds=max(remaining - 8, 0),
+        ramp_seconds=float(os.environ.get("AF_SIM_RAMP_SECONDS", "300")),
+        fast_interval=int(os.environ.get("AF_SIM_FAST_INTERVAL_SECONDS", "15")),
+    )

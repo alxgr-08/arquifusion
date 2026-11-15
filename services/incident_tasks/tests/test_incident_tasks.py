@@ -10,10 +10,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "statemachines" / "
 from flow_harness import Harness, anomaly_event  # noqa: E402
 
 NOW = "2026-11-13T14:07:00Z"
+Z3 = {"lat": -23.6009, "lon": -69.9775}
 
 
 def claimed(h: Harness, **kw) -> dict:
-    return incidents.claim(h.table, {"event": anomaly_event(**kw)}, NOW, {"zoneWindowMinutes": 120})
+    return incidents.claim(
+        h.table, {"event": anomaly_event(**kw)}, NOW, {"zoneWindowMinutes": 120, "zoneMinMachines": 3}
+    )
+
+
+def created(h: Harness, inc: dict, component: str = "BEARING") -> dict:
+    diag = incidents.rule_diagnosis({"incident": inc, "context": {}})
+    diag["diagnosis"]["component"] = component
+    incidents.create_incident(h.table, {"incident": inc, "context": {}, "ai": {"response": diag}}, NOW)
+    return {"incident": inc, "context": {"profile": Z3}, "created": {"diagnosis": diag}}
 
 
 def test_claim_rejects_invalid_events_and_unknown_machines() -> None:
@@ -28,74 +38,65 @@ def test_claim_rejects_invalid_events_and_unknown_machines() -> None:
 
 def test_reserve_parts_is_idempotent_on_retry() -> None:
     h = Harness()
-    inc = claimed(h)
-    payload = {
-        "incident": inc,
-        "context": {"profile": {"lat": -23.6509, "lon": -70.3975}},
-        "created": {"diagnosis": {"recommendedParts": [{"partId": "BRG-KIT-02", "qty": 1}]}},
-    }
-    incidents.create_incident(h.table, {**payload, "ai": {"response": None}}, NOW)
-    first = incidents.reserve_parts(h.table, payload, h.store.get_json("/af/incident/catalog"), NOW)
-    second = incidents.reserve_parts(h.table, payload, h.store.get_json("/af/incident/catalog"), NOW)
-    assert first["reserved"] == second["reserved"] == [{"partId": "BRG-KIT-02", "warehouseId": "WH-SUR", "qty": 1}]
-    stock = h.table.get("PART#BRG-KIT-02", "STOCK#WH-SUR")
-    assert (stock["available"], stock["reserved"]) == (0, 1)
+    payload = created(h, claimed(h))
+    fleet = incidents._fleet(h.store)
+    first = incidents.reserve_parts(h.table, payload, fleet, NOW)
+    second = incidents.reserve_parts(h.table, payload, fleet, NOW)
+    assert first["reserved"] == second["reserved"] == [{"partId": "BRG-SPH-22", "warehouse": "WH-NORTE", "qty": 1}]
+    stock = h.table.get("PART#BRG-SPH-22", "STOCK#WH-NORTE")
+    assert (stock["available"], stock["reserved"]) == (1, 1)
 
 
 def test_two_incidents_cannot_take_the_last_part() -> None:
     h = Harness()
-    catalog = h.store.get_json("/af/incident/catalog")
+    fleet = incidents._fleet(h.store)
     results = []
-    for machine in ("EXC-0042", "HTK-0103", "HTK-0104", "LDR-0202"):
-        inc = claimed(h, machine_id=machine)
-        payload = {
-            "incident": inc,
-            "context": {"profile": {"lat": -23.6509, "lon": -70.3975}},
-            "created": {"diagnosis": {"recommendedParts": [{"partId": "BRG-KIT-02", "qty": 1}]}},
-        }
-        incidents.create_incident(h.table, {**payload, "ai": {"response": None}}, NOW)
-        results.append(incidents.reserve_parts(h.table, payload, catalog, NOW))
-    assert [r["reserved"][0]["warehouseId"] if r["reserved"] else None for r in results] == [
+    for machine in ("EXC-0042", "EXC-0051", "TRK-0103", "TRK-0107"):
+        payload = created(h, claimed(h, machine_id=machine))
+        results.append(incidents.reserve_parts(h.table, payload, fleet, NOW))
+    assert [r["reserved"][0]["warehouse"] if r["reserved"] else None for r in results] == [
+        "WH-NORTE",
+        "WH-NORTE",
         "WH-SUR",
-        "WH-NORTE",
-        "WH-NORTE",
         None,
     ]
     assert results[-1]["hasMissing"]
 
 
-def test_rule_diagnosis_picks_most_specific_mode() -> None:
+@pytest.mark.parametrize(
+    ("metrics", "component"),
+    [
+        ({"temperatureC": 3, "vibrationMmS": 2.6}, "BEARING"),
+        ({"pressureBar": 4}, "HYDRAULIC_SYSTEM"),
+        ({"fuelRateLph": 3}, "FUEL_SYSTEM"),
+        ({"temperatureC": 3}, "COOLING_SYSTEM"),
+        ({"speedKmh": 2.5}, "ENGINE"),
+    ],
+)
+def test_rule_fallback_matches_the_contract(metrics: dict, component: str) -> None:
+    from af_shared import DiagnosisResult
+
     h = Harness()
     inc = claimed(h)
-    catalog = h.store.get_json("/af/incident/catalog")
-    ctx = {"profile": {"candidateFailureModes": catalog["failureModes"]}, "zone": {"machines": []}}
-    out = incidents.rule_diagnosis({"incident": inc, "context": ctx})
-    assert out["failureMode"] == "BEARING_WEAR" and out["recommendedParts"] == [{"partId": "BRG-KIT-02", "qty": 1}]
-    assert set(out["messages"]) == {"OPERATOR", "TECHNICIAN", "MAINT_LEAD", "SUPERVISOR", "MANAGER"}
     inc["anomaly"]["signals"] = [
-        {"metric": "pressureBar", "value": 150, "baseline": 215, "zScore": -4.0, "trend": "FALLING"}
+        {"metric": m, "value": 1, "baseline": 0, "zScore": z, "trend": "RISING"} for m, z in metrics.items()
     ]
-    assert incidents.rule_diagnosis({"incident": inc, "context": ctx})["failureMode"] == "HYDRAULIC_LEAK"
-    inc["anomaly"]["signals"] = [{"metric": "speedKmh", "value": 1, "baseline": 5, "zScore": -2.5, "trend": "FALLING"}]
-    unknown = incidents.rule_diagnosis({"incident": inc, "context": ctx})
-    assert unknown["failureMode"] == "UNKNOWN" and unknown["recommendedParts"] == []
+    out = incidents.rule_diagnosis({"incident": inc, "context": {}})
+    DiagnosisResult.model_validate(out)
+    assert out["diagnosis"]["component"] == component
 
 
 def test_assignment_retry_keeps_the_same_technician() -> None:
     import assignment
 
     h = Harness()
-    inc = claimed(h)
-    incidents.create_incident(h.table, {"incident": inc, "context": {}, "ai": {"response": None}}, NOW)
-    payload = {
-        "incident": inc,
-        "diagnosis": {"requiredSpecialty": "MECHANICAL"},
-        "profile": {"lat": -23.6509, "lon": -70.3975},
-    }
-    first = assignment.assign(h.table, payload, NOW)
-    retry = assignment.assign(h.table, payload, NOW)
-    assert first["techId"] == retry["techId"] == "T-04" and retry.get("retried")
-    assert h.table.get("TECH#T-04", "PROFILE")["queueLength"] == 1
+    payload = created(h, claimed(h))
+    req = {"incident": payload["incident"], "diagnosis": payload["created"]["diagnosis"], "profile": Z3}
+    first = assignment.assign(h.table, req, NOW)
+    retry = assignment.assign(h.table, req, NOW)
+    assert first["techId"] == retry["techId"] == "T-07" and retry.get("retried")
+    tech = h.table.get("TECH#T-07", "PROFILE")
+    assert tech["queue"] == 1 and tech["availability"] == "BUSY"
 
 
 def test_route_matrix_is_used_when_available() -> None:
