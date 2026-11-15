@@ -34,11 +34,12 @@ export class ApiRequestError extends Error {
   }
 }
 
-/** API Gateway client (contracts/api.md). Token = Cognito JWT. */
+/** API Gateway client (contracts/api.md). Token = Google ID token (JWT authorizer). */
 export class HttpFleetApi implements FleetApi {
   constructor(
     private readonly baseUrl: string,
     private readonly getToken: () => string | undefined,
+    private readonly onUnauthorized?: () => void,
   ) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -53,6 +54,7 @@ export class HttpFleetApi implements FleetApi {
     });
     const body = response.status === 204 ? undefined : await response.json();
     if (!response.ok) {
+      if (response.status === 401) this.onUnauthorized?.();
       const err = body?.error ?? { code: "HTTP_ERROR", message: response.statusText };
       throw new ApiRequestError(response.status, err.code, err.message);
     }

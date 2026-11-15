@@ -122,3 +122,6 @@ td { border-bottom: 1px solid #1c232d; padding: 0.45rem 0.4rem; vertical-align: 
   background: rgba(79, 195, 247, 0.08); color: #1c5d7a; font-weight: 700; font-size: 0.8rem;
   display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; pointer-events: none;
 }
+.user { display: flex; gap: 0.5rem; align-items: center; color: var(--muted); margin-left: 0.75rem; }
+.login { display: grid; place-items: center; min-height: 100vh; }
+.login .card { max-width: 420px; display: grid; gap: 1rem; justify-items: center; text-align: center; }
