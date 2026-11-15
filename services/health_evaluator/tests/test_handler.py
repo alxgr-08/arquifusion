@@ -143,6 +143,41 @@ def test_fault_publishes_one_valid_anomaly_event(aws) -> None:
     assert event.detail.signals[0].metric in {"temperatureC", "vibrationMmS"}
 
 
+def test_failed_publish_is_retried_from_pending_alert(aws) -> None:
+    for i in range(60):
+        handler.process(telemetry(i))
+
+    def failing_put_events(Entries):  # noqa: N803 (boto3 signature)
+        raise RuntimeError("EventBridge unavailable")
+
+    publish_ok = aws.put_events
+    aws.put_events = failing_put_events
+    fault = None
+    for i in range(10):
+        fault = telemetry(60 + i, temperatureC=92.4, vibrationMmS=7.8)
+        try:
+            handler.process(fault)
+        except RuntimeError:
+            break
+    assert profile()["pendingAlert"]["alertId"] == fault["messageId"]
+
+    aws.put_events = publish_ok
+    assert handler.process(fault)["result"] == "SKIPPED"  # Lambda retry of the same message
+
+    assert len(aws.entries) == 1
+    assert json.loads(aws.entries[0]["Detail"])["machineId"] == "EXC-0042"
+    assert "pendingAlert" not in profile()
+
+
+def test_published_alert_leaves_no_pending_alert(aws) -> None:
+    for i in range(60):
+        handler.process(telemetry(i))
+    for i in range(10):
+        handler.process(telemetry(60 + i, temperatureC=92.4, vibrationMmS=7.8))
+    assert aws.entries
+    assert "pendingAlert" not in profile()
+
+
 def test_fleet_baseline_from_dynamodb_is_used(aws) -> None:
     boto3.resource("dynamodb").Table(TABLE).put_item(
         Item={
