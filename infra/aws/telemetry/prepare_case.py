@@ -10,13 +10,15 @@ from uuid import UUID, uuid4
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[3]
-for source in (ROOT, ROOT / "shared", ROOT / "services" / "simulator"):
+for source in (ROOT, ROOT / "shared"):
     sys.path.insert(0, str(source))
 
 from af_shared import config  # noqa: E402
 from af_shared.fakes import FakeSsm, Recorder  # noqa: E402
 
-from services.simulator.handler import Publisher, run  # noqa: E402
+# The simulator imports its sibling fleet_sim like it does in its Lambda package.
+with patch.object(sys, "path", [str(ROOT / "services" / "simulator"), *sys.path]):
+    from services.simulator.handler import Publisher, run
 
 FUNCTION = "af-dev-health-evaluator"
 STREAM = "af-dev-telemetry"
