@@ -51,7 +51,7 @@ ack_frontend_origin      = "http://localhost:5173"
 
 `incident_api_base_url` identifica el stage. Para cerrar un ensayo ya desplegado, preparar un plan con `enable_incident_api = true`, las mismas rutas y `open_incident_api_endpoint = false`. El resumen debe mostrar el cierre del endpoint. La aplicación de cada plan requiere la autorización de Leonardo.
 
-`review_plan.py` compara el HCL del plan guardado con el checkout. Controla las 27 direcciones existentes, los cinco paquetes de Lambda, el workflow, la regla desactivada y las direcciones exactas de la API. Exige que el estado del endpoint, las rutas JWT y el origen coincidan con la intención del revisor. En un stage ya creado admite cambios de apertura/CORS, de ráfaga y de código de la API dentro de ese alcance. También coteja el ZIP con el hash del plan y los módulos de `services/api` y `shared/af_shared`. El resumen `.review.json` contiene conteos, rutas, direcciones y hashes. El JSON completo de Terraform se procesa en memoria.
+`review_plan.py` compara el HCL del plan guardado con el checkout. En el modo histórico controla las 27 direcciones originales. Después de crear Amplify se debe añadir `--existing-hosting`: exige que las 29 direcciones existentes permanezcan en no-op y verifica la propiedad, cuenta, región, relación app/rama y origen del hosting manual. También controla los cinco paquetes de Lambda, el workflow, la regla desactivada y las direcciones exactas de la API. Exige que el estado del endpoint, las rutas JWT y el origen coincidan con la intención del revisor. En un stage ya creado admite cambios de apertura/CORS, de ráfaga y de código de la API dentro de ese alcance. Coteja el ZIP con el hash del plan y los módulos de `services/api` y `shared/af_shared`. El resumen `.review.json` contiene conteos, rutas, direcciones y hashes. El JSON completo de Terraform se procesa en memoria.
 
 ```powershell
 python infra/aws/api/review_plan.py build/terraform-review/r1-base.tfplan --expect disabled
@@ -61,6 +61,16 @@ python infra/aws/api/review_plan.py build/terraform-review/ensayo-flota.tfplan -
 ```
 
 Los nombres de archivo son ejemplos para los planes recién generados. Para un origen HTTPS registrado, añadir `--origin` con su valor exacto. El cliente live conserva el ETag de la espera mostrada, lo envía en `If-Match` y lee `Retry-After`. [Cliente del frontend](../../../frontend/src/api/client.ts)
+
+### Preparación posterior al hosting
+
+Amplify ya administra la aplicación `af-dev-arquifusion-web` y la rama manual `demo`. El origen reservado es `https://demo.d2ygcm34t8aku9.amplifyapp.com`. Alexis debe confirmar su registro en Google. Mientras responde, el perfil de revisión [hosting-review.tfvars.example](hosting-review.tfvars.example) prepara las 12 rutas del dashboard con el endpoint cerrado. El CORS exacto no demuestra por sí solo que Google haya autorizado el origen.
+
+Después del hosting, los planes anteriores basados en 27 recursos quedaron obsoletos. Conservar `prepare_manual_web_hosting=true` al regenerar cualquier etapa y utilizar `--existing-hosting` para su revisión. El perfil completo debe proponer 31 altas de API, cero cambios/bajas y 29 no-op. El endpoint se abrirá con otro plan revisado cuando se confirme el origen y se autorice el ensayo. [Plan y comprobaciones actuales](plan-hosting-2026-11-15.md)
+
+```powershell
+python infra/aws/api/review_plan.py build/api-hosting-20261115/api-dashboard-closed.tfplan --expect closed --fleet-reads --existing-hosting --origin https://demo.d2ygcm34t8aku9.amplifyapp.com
+```
 
 Evidencia vigente del 15/11 y ensayos posteriores de Parquet y BigQuery en la [arquitectura](../../../docs/arquitectura.md).
 

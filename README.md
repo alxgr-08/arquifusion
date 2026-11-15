@@ -16,7 +16,7 @@ New here? Start with [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
 
 AWS Academy opera la telemetría e incidentes. Google Cloud analiza el histórico con BigQuery ML. El simulador direct alimenta el evaluador y el archivo Parquet. La API utiliza Google Sign-In, un JWT authorizer y concesiones por operación en DynamoDB. El recorrido manual de incidentes y la analítica con histórico sintético tienen evidencia independiente.
 
-[Arquitectura, madurez por componente y ensayo pendiente](docs/arquitectura.md) · [Diagrama editable](docs/architecture.drawio) · [PNG](docs/architecture.png) · [Relevo actual del 15/11](docs/revision-nocturna-2026-11-15.md)
+[Arquitectura, madurez por componente y ensayo pendiente](docs/arquitectura.md) · [Diagrama editable](docs/architecture.drawio) · [PNG](docs/architecture.png) · [Preparación actual de Rol 1](docs/rol1-listo-2026-11-15.md) · [Ensayo del 15/11](docs/revision-nocturna-2026-11-15.md)
 
 ## Repository layout
 

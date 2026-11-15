@@ -4,7 +4,9 @@ Alexis confirmó el proyecto `arquifusion` en BigQuery Sandbox, ubicación `US`,
 
 ## Comprobar los recursos del equipo
 
-`python infra/gcp/check_bigquery.py arquifusion` usa una instalación autenticada de `gcloud` y `bq` para consultar metadatos del proyecto, API, datasets, tablas y modelos conocidos. En el equipo de Leonardo el comando devuelve `MISSING_CLI`. Si ya existen `af_lake`, `af_ml` o `af_out`, coordinar cualquier gestión de su ciclo de vida con Alexis. La raíz Terraform solo define el dataset temporal optativo del puente.
+`python infra/gcp/check_bigquery.py arquifusion` usa una instalación autenticada de `gcloud` y `bq` para consultar metadatos del proyecto, API, datasets, tablas y modelos conocidos. Al iniciar la preparación faltaban ambos comandos en PATH. Se preparó una copia portátil oficial de Google Cloud CLI 593.0.0 en el equipo de Leonardo, sin modificar PATH global ni iniciar sesión. Activar su carpeta bin solo en la sesión de ensayo y autenticar personalmente al operador autorizado antes de comprobar el proyecto. [Uso de la CLI portátil](cli-portable.md) Si ya existen `af_lake`, `af_ml` o `af_out`, coordinar cualquier gestión de su ciclo de vida con Alexis. La raíz Terraform solo define el dataset temporal optativo del puente.
+
+Para comprobar también las precondiciones del puente, usar `python infra/gcp/check_bigquery.py arquifusion --bridge`. Incluye `af_bridge_stage` en US con vencimiento positivo de tablas y las tablas de clúster/tendencia usadas por el retorno seleccionado. Esta comprobación solo lee metadatos; no demuestra permisos para cargar ni ejecutar jobs. [Preparación y checklist del ensayo](ensayo-preparado-2026-11-15.md) · [Perfil de revisión de staging](staging-review.tfvars.example)
 
 ## Tablas temporales del cargador
 

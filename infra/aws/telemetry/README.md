@@ -34,37 +34,38 @@ La conversión de formato requiere un búfer de al menos 64 MiB. El cargador lim
 
 ## Preparar el bucket tras autorizar su alta
 
-El laboratorio denegó `s3:GetBucketObjectLockConfiguration` al recurso Terraform general `aws_s3_bucket` durante el bootstrap del estado. Para datos se habilita fuera de Terraform un bucket de propósito general dedicado. El módulo comprueba el ARN exacto, las cuatro etiquetas y la región antes de administrar sus controles. El nombre pertenece al espacio regional de la cuenta. S3 devuelve 409 si ya existe, también en Virginia. [Antecedente del laboratorio](../README.md) · [Espacios de nombres de S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/gpbucketnamespaces.html)
+El laboratorio denegó `s3:GetBucketObjectLockConfiguration` al recurso Terraform general `aws_s3_bucket` durante el bootstrap del estado. La lectura de ese recurso en el proveedor fijado `6.73.0` todavía consulta Object Lock y propaga AccessDenied en la partición AWS. Para datos se prepara fuera de Terraform un bucket de propósito general dedicado. El módulo comprueba el ARN exacto, las cuatro etiquetas y la región antes de administrar sus controles. El nombre pertenece al espacio regional de la cuenta. S3 devuelve 409 si ya existe, también en Virginia. [Antecedente del laboratorio](../README.md) · [Código del proveedor](https://github.com/hashicorp/terraform-provider-aws/blob/v6.73.0/internal/service/s3/bucket.go#L1117) · [Espacios de nombres de S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/gpbucketnamespaces.html)
 
-Este bloque de PowerShell **crea el bucket y le asigna etiquetas**. Requiere la cuenta de Academy ya comprobada en `TF_VAR_expected_account_id`, AWS CLI con soporte de `--bucket-namespace` y autorización para estas dos escrituras. Ante una colisión o respuesta de creación ambigua, el bloque se detiene antes del etiquetado.
+`prepare_bucket.py` muestra por defecto una propuesta **offline**, sin construir un cliente ni consultar credenciales. `--check` consulta STS y HeadBucket y comprueba, mediante un skeleton local, que AWS CLI soporta `BucketNamespace`. La cuenta está fijada a la Academy verificada y el nombre jamás coincide con el bucket de estado. Un bucket existente, un 403 o una respuesta ambigua detienen el proceso antes de cualquier escritura. El SHA siguiente identifica la propuesta de dos escrituras; no es un plan Terraform ni demuestra permiso de creación.
 
 ```powershell
-$accountId = $env:TF_VAR_expected_account_id
-if ($accountId -notmatch '^\d{12}$') { throw 'Falta el ID de cuenta aprobado' }
-$awsOptions = @('--profile', 'default', '--region', 'us-east-1', '--no-cli-pager')
-$activeId = aws sts get-caller-identity @awsOptions --query Account --output text
-if ($LASTEXITCODE -ne 0 -or $activeId -ne $accountId) { throw 'Cuenta de Academy incorrecta' }
-$dataBucket = "af-dev-arquifusion-lake-${accountId}-us-east-1-an"
-aws s3api create-bucket @awsOptions --bucket $dataBucket --bucket-namespace account-regional
-if ($LASTEXITCODE -ne 0) { throw 'Revisar el resultado de CreateBucket antes de continuar' }
-$lakeTags = 'TagSet=[{Key=project,Value=arquifusion},{Key=env,Value=dev},{Key=owner,Value=rol1},{Key=purpose,Value=telemetry-lake}]'
-aws s3api put-bucket-tagging @awsOptions --bucket $dataBucket --expected-bucket-owner $accountId --tagging $lakeTags
-if ($LASTEXITCODE -ne 0) { throw 'Bucket recién creado, etiquetado pendiente de conciliación' }
+python infra/aws/telemetry/prepare_bucket.py --account-id 975050277936
+python infra/aws/telemetry/prepare_bucket.py --account-id 975050277936 --check
 ```
 
-Si la sesión se interrumpe tras el alta, conciliar el `CreateBucket` de esta operación y comprobar propietario, región, etiquetas y uso antes de completar la fase. En un bucket preaprovisionado, exigir la misma identidad y dedicación. El bucket de estado tiene otro nombre y queda fuera del módulo.
+El 15/11 la comprobación de lectura pasó: sesión Academy correcta, CLI `2.40.2` con la opción regional y bucket ausente. El SHA de la propuesta es `FAD523CA53AD959C9003E17213F6A94E233A09AAB6260452BF7D253056927894`. La creación en ese namespace dentro de Academy queda **NO_PROBADA**; el ensayo temporal anterior usó un bucket global. No se hizo ninguna escritura en esta preparación.
+
+El siguiente comando **escribe en AWS** y queda pendiente de aprobación expresa del alcance: crear exactamente ese bucket y asignarle sus cuatro etiquetas. No ejecutarlo durante una revisión. El script vuelve a comprobar la ausencia, usa un intento por operación y conserva un diario local exclusivo antes de empezar. Después del alta exige región, los cuatro bloqueos públicos, AES256 y ACLs deshabilitadas antes de etiquetar; luego verifica las etiquetas y su consulta por Terraform. No activa ABAC ni crea políticas, roles o recursos multirregión.
+
+```powershell
+# SOLO después de aprobar estas dos escrituras y el SHA de la propuesta:
+python infra/aws/telemetry/prepare_bucket.py --account-id 975050277936 --create --approved-sha256 FAD523CA53AD959C9003E17213F6A94E233A09AAB6260452BF7D253056927894 --journal build/lake-bootstrap/create-bucket.jsonl
+```
+
+Si se pierde una respuesta o falla una verificación, el diario impide repetir la creación automáticamente. Conciliar CloudTrail, propietario, región, controles, etiquetas y uso antes de continuar; el script no adopta, retaggea ni elimina recursos preexistentes. Una demora en la propagación de etiquetas requiere repetir solamente su lectura y regenerar el plan. Si Academy deniega el namespace o una lectura necesaria, detenerse y revisar la alternativa; no cambiar a un bucket ajeno o al de estado.
 
 ## Revisar el plan
 
 Usar la configuración, el backend y los paquetes de Lambda del despliegue actual. Comprobar con `glue get-database` y `firehose describe-delivery-stream` el inventario de los dos nombres antes de la primera alta. Una colisión fuera del estado requiere identificar al propietario. La lectura de etiquetas del módulo utiliza `tag:GetResources` acotada al ARN dedicado. [API de etiquetas](https://docs.aws.amazon.com/cli/latest/reference/resourcegroupstaggingapi/get-resources.html)
 
 ```powershell
-terraform -chdir=infra/aws init -input=false -backend-config=backend.hcl
 terraform -chdir=infra/aws validate
-terraform -chdir=infra/aws plan -input=false -lock=false -var=enable_telemetry_lake=true
+terraform -chdir=infra/aws plan -input=false -lock=false -var-file=telemetry/lake-review.tfvars.example -out=../../build/lake-review.tfplan
 ```
 
-Este plan de revisión usa el estado remoto sin escribir un objeto de bloqueo. Antes de aplicar en otra fase, regenerar el plan con el bloqueo normal y revisar todos los cambios. Para un lago nuevo esperar seis altas del módulo, tres controles S3, la base y tabla Glue y el stream Firehose. El bucket debe existir cuando se planifica. El plan habilitado se detiene si faltan el bucket, el acceso a sus etiquetas o su identidad correcta. Deshabilitar el módulo después de desplegarlo implica retirar infraestructura. El versionado y el cifrado tienen protección contra destrucción y el bloqueo público se conserva al retirar su recurso.
+El backend de la aplicación ya está inicializado; no reinicializarlo ni migrarlo para este paso. El [perfil de revisión](lake-review.tfvars.example) conserva el hosting y parte de los **29 recursos existentes**, antes de desplegar la API. Si se aplica antes otra etapa, reconciliar también sus variables y regenerar todos los planes posteriores. Este plan de revisión usa el estado remoto sin escribir un objeto de bloqueo. Antes de aplicar en otra fase, revisar un plan recién generado con todos los recursos previos en no-op y utilizar el bloqueo normal para la aplicación. Para un lago nuevo se esperan seis altas del módulo: tres controles S3, la base y tabla Glue y el stream Firehose. El bucket debe existir cuando se planifica. **Todavía no existe un plan real aplicable del lago**: el bucket ausente bloquea su precondición. Los seis recursos se validan con el proveedor simulado; ese resultado no acredita un despliegue.
+
+Deshabilitar el módulo después de desplegarlo implica retirar infraestructura. El versionado y el cifrado tienen protección contra destrucción y el bloqueo público se conserva al retirar su recurso.
 
 Los tests usan un proveedor simulado, verifican el catálogo contra el contrato, comprueban el destino y rechazan un bucket ausente o con otro propósito. Se ejecutan desde la raíz del repositorio.
 

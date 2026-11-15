@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from zipfile import ZipFile
 
 import pytest
@@ -130,6 +131,159 @@ def test_review_requires_explicit_intent_to_open_the_endpoint_or_add_routes():
         plan.review({"complete": True, "variables": flags}, enabled=True)
     with pytest.raises(ValueError, match="enable_fleet_read_routes"):
         plan.review({"complete": True, "variables": flags}, enabled=True, endpoint_open=True)
+
+
+@pytest.fixture
+def hosting_rows():
+    app_id = "d2ygcm34t8aku9"
+    arn = f"arn:aws:amplify:us-east-1:975050277936:apps/{app_id}"
+    values = {
+        "aws_amplify_app.web[0]": {
+            "id": app_id,
+            "arn": arn,
+            "name": "af-dev-arquifusion-web",
+            "default_domain": f"{app_id}.amplifyapp.com",
+            "platform": "WEB",
+            "repository": None,
+            "iam_service_role_arn": None,
+            "enable_branch_auto_build": False,
+            "enable_auto_branch_creation": False,
+            "enable_branch_auto_deletion": False,
+            "tags_all": {"project": "arquifusion", "env": "dev", "owner": "rol1"},
+        },
+        "aws_amplify_branch.demo[0]": {
+            "app_id": app_id,
+            "arn": f"{arn}/branches/demo",
+            "branch_name": "demo",
+            "stage": "DEVELOPMENT",
+            "enable_auto_build": False,
+            "enable_pull_request_preview": False,
+        },
+    }
+    return {
+        key: {"actions": ["no-op"], "before": deepcopy(value), "after": value, "after_unknown": {}}
+        for key, value in values.items()
+    }
+
+
+def test_preserved_hosting_matches_the_reviewed_owner_and_origin(hosting_rows):
+    variables = {"expected_account_id": "975050277936"}
+    plan.check_hosting(hosting_rows, variables, origin="https://demo.d2ygcm34t8aku9.amplifyapp.com")
+    with pytest.raises(ValueError, match="origin differs"):
+        plan.check_hosting(hosting_rows, variables, origin="http://localhost:5173")
+    with pytest.raises(ValueError, match="Unexpected existing Amplify app"):
+        plan.check_hosting(hosting_rows, {"expected_account_id": "111111111111"})
+
+
+def test_hosting_refresh_accepts_only_empty_post_creation_normalization(hosting_rows):
+    normalizations = {
+        "aws_amplify_app.web[0]": {"auto_branch_creation_patterns": [], "environment_variables": {}, "tags": {}},
+        "aws_amplify_branch.demo[0]": {"environment_variables": {}, "tags": {}},
+    }
+    data = {
+        "resource_drift": [
+            {
+                "address": address,
+                "change": {"before": dict.fromkeys(fields), "after": fields},
+            }
+            for address, fields in normalizations.items()
+        ]
+    }
+    assert plan.check_refresh(data, hosting_rows) == {
+        address: sorted(fields) for address, fields in normalizations.items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("address", "field", "value"),
+    [
+        ("aws_amplify_app.web[0]", "environment_variables", {"VITE_API_MODE": "live"}),
+        ("aws_amplify_branch.demo[0]", "environment_variables", {"VITE_API_MODE": "live"}),
+        ("aws_amplify_app.web[0]", "auto_branch_creation_patterns", ["*"]),
+        ("aws_amplify_branch.demo[0]", "auto_branch_creation_patterns", []),
+        ("aws_lambda_function.health_evaluator", "environment_variables", {}),
+        ("aws_lambda_function.health_evaluator", "auto_branch_creation_patterns", []),
+    ],
+)
+def test_hosting_refresh_rejects_real_values_and_other_resource_exceptions(hosting_rows, address, field, value):
+    rows = hosting_rows | {"aws_lambda_function.health_evaluator": {"actions": ["no-op"]}}
+    data = {"resource_drift": [{"address": address, "change": {"before": {field: None}, "after": {field: value}}}]}
+    with pytest.raises(ValueError, match="Unexpected refresh"):
+        plan.check_refresh(data, rows)
+
+
+@pytest.mark.parametrize("actions", [["create"], ["update"], ["delete"], ["delete", "create"]])
+def test_preserved_hosting_rejects_any_mutation(hosting_rows, actions):
+    hosting_rows["aws_amplify_app.web[0]"]["actions"] = actions
+    with pytest.raises(ValueError, match="hosting must remain no-op"):
+        plan.check_hosting(hosting_rows, {"expected_account_id": "975050277936"})
+
+
+@pytest.mark.parametrize(
+    ("resource", "field", "value"),
+    [
+        ("aws_amplify_app.web[0]", "name", "other-project"),
+        ("aws_amplify_app.web[0]", "repository", "https://github.com/other/project"),
+        ("aws_amplify_app.web[0]", "enable_auto_branch_creation", True),
+        ("aws_amplify_app.web[0]", "tags_all", {"project": "other"}),
+        ("aws_amplify_branch.demo[0]", "app_id", "other-app"),
+        ("aws_amplify_branch.demo[0]", "enable_auto_build", True),
+        ("aws_amplify_branch.demo[0]", "enable_pull_request_preview", True),
+    ],
+)
+def test_preserved_hosting_rejects_other_resources_and_automation(hosting_rows, resource, field, value):
+    hosting_rows[resource]["after"][field] = value
+    with pytest.raises(ValueError, match="Unexpected existing Amplify"):
+        plan.check_hosting(hosting_rows, {"expected_account_id": "975050277936"})
+
+
+def base_plan(rows, *, hosting):
+    variables = {
+        "enable_incident_api": False,
+        "open_incident_api_endpoint": False,
+        "enable_fleet_read_routes": False,
+        "prepare_manual_web_hosting": hosting,
+        "aws_profile": "default",
+        "region": "us-east-1",
+        "env": "dev",
+        "expected_account_id": "975050277936",
+    }
+    return {
+        "complete": True,
+        "variables": {key: {"value": value} for key, value in variables.items()},
+        "resource_changes": [{"address": key, "mode": "managed", "change": value} for key, value in rows.items()],
+    }
+
+
+def test_29_resource_mode_is_explicit_and_cannot_modify_the_original_base(monkeypatch, hosting_rows):
+    monkeypatch.setattr(plan, "check_existing", lambda rows, variables, root: {})
+    rows = {key: {"actions": ["no-op"]} for key in plan.BASE} | hosting_rows
+    data = base_plan(rows, hosting=True)
+    with pytest.raises(ValueError, match="prepare_manual_web_hosting"):
+        plan.review(data, enabled=False)
+    summary = plan.review(data, enabled=False, existing_hosting=True)
+    assert (summary["add"], summary["change"], summary["destroy"], summary["noOp"]) == (0, 0, 0, 29)
+    rows["aws_lambda_function.health_evaluator"]["actions"] = ["update"]
+    with pytest.raises(ValueError, match="Existing base must remain no-op"):
+        plan.review(data, enabled=False, existing_hosting=True)
+
+
+def test_29_resource_mode_rejects_missing_and_unreviewed_addresses(hosting_rows):
+    rows = {key: {"actions": ["no-op"]} for key in plan.BASE} | hosting_rows
+    del rows["aws_amplify_branch.demo[0]"]
+    with pytest.raises(ValueError, match="Unexpected/missing managed addresses"):
+        plan.review(base_plan(rows, hosting=True), enabled=False, existing_hosting=True)
+    rows["aws_s3_bucket.other_project"] = {"actions": ["no-op"]}
+    with pytest.raises(ValueError, match="Unexpected/missing managed addresses"):
+        plan.review(base_plan(rows, hosting=True), enabled=False, existing_hosting=True)
+
+
+def test_27_resource_mode_preserves_historical_review(monkeypatch):
+    monkeypatch.setattr(plan, "check_existing", lambda rows, variables, root: {})
+    rows = {key: {"actions": ["no-op"]} for key in plan.BASE}
+    summary = plan.review(base_plan(rows, hosting=False), enabled=False)
+    assert summary["noOp"] == 27
+    assert summary["existingHostingPreserved"] is False
 
 
 def test_opening_an_existing_closed_endpoint_allows_only_reviewed_changes():

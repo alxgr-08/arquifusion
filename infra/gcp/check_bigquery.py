@@ -18,6 +18,8 @@ TABLES = (
     "af_out.parts_forecast",
 )
 MODELS = ("af_ml.fuel_lpt_arima", "af_ml.machine_clusters", "af_ml.parts_demand")
+BRIDGE_DATASETS = ("af_bridge_stage",)
+BRIDGE_TABLES = ("af_out.machine_clusters", "af_out.fuel_trends")
 
 
 def run_json(command):
@@ -39,7 +41,13 @@ def run_json(command):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", help="Verified public Google Cloud project ID of the team")
-    project = parser.parse_args().project
+    parser.add_argument(
+        "--bridge",
+        action="store_true",
+        help="Also inspect the expiring staging dataset and selected KPI return dependencies",
+    )
+    args = parser.parse_args()
+    project = args.project
     if not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", project):
         parser.error("Use a valid project ID confirmed by the team.")
     cloud, bq = shutil.which("gcloud"), shutil.which("bq")
@@ -68,7 +76,9 @@ def main():
     else:
         print("BigQuery API enabled:", any(x["config"]["name"] == "bigquery.googleapis.com" for x in services))
     missing = services is None or not any(x["config"]["name"] == "bigquery.googleapis.com" for x in services)
-    for name in (*DATASETS, *TABLES, *MODELS):
+    datasets = DATASETS + (BRIDGE_DATASETS if args.bridge else ())
+    tables = TABLES + (BRIDGE_TABLES if args.bridge else ())
+    for name in (*datasets, *tables, *MODELS):
         command = [bq, f"--project_id={project}", "--format=prettyjson", "show"]
         if name in MODELS:
             command.append("--model")
@@ -76,9 +86,15 @@ def main():
         if obj is None:
             print(name, status)
             missing = True
-        elif name in DATASETS:
+        elif name in datasets:
             print(name, status, "location", obj.get("location"))
             missing |= obj.get("location") != "US"
+            if name in BRIDGE_DATASETS:
+                # Match the loader's actual precondition without creating a table or job.
+                ttl = obj.get("defaultTableExpirationMs")
+                valid_ttl = str(ttl).isdigit() and int(ttl) > 0
+                print(name, "expiring tables", "YES" if valid_ttl else "MISSING_OR_INVALID_TTL")
+                missing |= not valid_ttl
         elif name in MODELS:
             print(name, status, obj.get("modelType"))
         else:

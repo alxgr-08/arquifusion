@@ -70,3 +70,7 @@ El flujo usa almacenes por operación, procedencia de lecturas y mantenimiento, 
 ## Despliegue y ensayo v1.2 del 15/11
 
 Se autorizaron y aplicaron cinco paquetes y el ASL (0/6/0), más una actualización de incident-tasks para compatibilidad de claves (0/1/0). El plan final quedó 0/0/0 con 27 recursos. INC-a8c8 cerró con dos recibos, una pieza y un mantenimiento. La regla sigue DISABLED. La prueba de callbacks usó el handler local y acceso IAM. La API con JWT, hosting y puente real conservan su despliegue y ensayo pendientes. [Evidencia y reparto del trabajo](revision-nocturna-2026-11-15.md)
+
+## Corte posterior al alta de hosting
+
+El plan autorizado de Amplify creó únicamente la app WEB `af-dev-arquifusion-web` y la rama manual `demo` (2/0/0), con origen `https://demo.d2ygcm34t8aku9.amplifyapp.com`. El estado pasó a 29 recursos, sin drift ni publicación del frontend. La API completa se prepara cerrada con 12 rutas JWT (31/0/0, 29 no-op) mientras Alexis confirma el origen Google. Los planes anteriores al hosting requieren regeneración. El lago y los consumidores siguen sin desplegar. [Preparación actual sin nuevas escrituras cloud](rol1-listo-2026-11-15.md)

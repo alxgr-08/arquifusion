@@ -26,4 +26,4 @@ Leonardo conserva el backend Terraform exclusivo y el estado separado del bootst
 
 La autoría se encuentra en [CODEOWNERS](../.github/CODEOWNERS). Los cambios de contrato requieren acuerdo entre los tres roles. Usar PR para integrar las contribuciones y revisar la CI antes de una demostración.
 
-El PR #50 publica la IaC de Leonardo y las correcciones de los tres roles. El relevo registra qué se probó realmente en Academy y cuáles planes de altas siguen pendientes. [Despliegue y próximos pasos](revision-nocturna-2026-11-15.md)
+El PR #50 publica la IaC de Leonardo y las correcciones de los tres roles. El relevo registra qué se probó realmente en Academy. Después se creó el hosting y el estado pasó a 29 recursos; la preparación actual de API, lago, puente y publicación web se revisa en ese PR en borrador. Las altas y la publicación web siguen pendientes de autorización. [Preparación vigente y responsables](rol1-listo-2026-11-15.md) · [Ensayo previo](revision-nocturna-2026-11-15.md)

@@ -1,0 +1,10 @@
+# Root infra/aws review profile AFTER the separately approved bucket exists.
+# Reconcile all already deployed stages before using this example again.
+expected_account_id        = "975050277936"
+aws_profile                = "default"
+region                     = "us-east-1"
+env                        = "dev"
+prepare_manual_web_hosting = true
+enable_telemetry_lake       = true
+# API remains absent until its own approved deployment; preserve it afterwards.
+enable_incident_api = false

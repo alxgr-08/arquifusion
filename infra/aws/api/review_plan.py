@@ -48,6 +48,7 @@ BASE = {
     *(f'aws_cloudwatch_log_group.incident_lambda["{name}"]' for name in INCIDENT_FUNCTIONS),
     *(f'aws_lambda_function.incident["{name}"]' for name in INCIDENT_FUNCTIONS),
 }
+HOSTING = {"aws_amplify_app.web[0]", "aws_amplify_branch.demo[0]"}
 API_COMMON = {
     "aws_apigatewayv2_api.ack[0]",
     "aws_apigatewayv2_authorizer.ack_google[0]",
@@ -181,6 +182,42 @@ def check_existing(rows, variables, root):
     return dict(sorted(updates.items()))
 
 
+def check_hosting(rows, variables, *, origin=None):
+    """Preserve only the existing manual ArquiFusion app and its demo branch."""
+    for address in HOSTING:
+        require(rows[address]["actions"] == ["no-op"], "Existing hosting must remain no-op: " + address)
+    app = rows["aws_amplify_app.web[0]"]["after"]
+    branch = rows["aws_amplify_branch.demo[0]"]["after"]
+    app_id = app.get("id")
+    arn = f"arn:aws:amplify:us-east-1:{variables['expected_account_id']}:apps/{app_id}"
+    require(
+        app_id
+        and app.get("arn") == arn
+        and app.get("name") == "af-dev-arquifusion-web"
+        and app.get("default_domain") == f"{app_id}.amplifyapp.com"
+        and app.get("platform") == "WEB"
+        and not app.get("repository")
+        and not app.get("iam_service_role_arn")
+        and all(
+            app.get(flag) is False
+            for flag in ("enable_branch_auto_build", "enable_auto_branch_creation", "enable_branch_auto_deletion")
+        )
+        and app.get("tags_all") == {"project": "arquifusion", "env": "dev", "owner": "rol1"},
+        "Unexpected existing Amplify app, ownership or automation",
+    )
+    require(
+        branch.get("app_id") == app_id
+        and branch.get("arn") == f"{arn}/branches/demo"
+        and branch.get("branch_name") == "demo"
+        and branch.get("stage") == "DEVELOPMENT"
+        and branch.get("enable_auto_build") is False
+        and branch.get("enable_pull_request_preview") is False,
+        "Unexpected existing Amplify demo branch or app relationship",
+    )
+    if origin is not None:
+        require(origin == f"https://demo.{app['default_domain']}", "API origin differs from the existing hosting")
+
+
 def check_api(rows, config, variables, origin, root, *, endpoint_open, routes):
     def after(name):
         return rows[name + "[0]"]["after"]
@@ -297,10 +334,13 @@ def check_refresh(data, rows):
                 require(not old.get(field) and json.loads(new[field]) == json.loads(policy), "Unexpected DLQ policy")
             else:
                 empty = (None, [], {})
+                allowed_empty = {"layers", "tags", "alarm_actions", "ok_actions", "insufficient_data_actions"}
+                if address in HOSTING:
+                    allowed_empty.add("environment_variables")
+                if address == "aws_amplify_app.web[0]":
+                    allowed_empty.add("auto_branch_creation_patterns")
                 require(
-                    field in {"layers", "tags", "alarm_actions", "ok_actions", "insufficient_data_actions"}
-                    and old.get(field) in empty
-                    and new.get(field) in empty,
+                    field in allowed_empty and old.get(field) in empty and new.get(field) in empty,
                     f"Unexpected refresh: {address}.{field}",
                 )
         fields_by_address[address] = fields
@@ -327,7 +367,9 @@ def review_api_changes(rows, addresses):
     return updates
 
 
-def review(data, *, enabled, endpoint_open=False, fleet_reads=False, origin=DEV_ORIGIN, root=ROOT):
+def review(
+    data, *, enabled, endpoint_open=False, fleet_reads=False, existing_hosting=False, origin=DEV_ORIGIN, root=ROOT
+):
     require(not data.get("errored") and data.get("complete") is True, "Expected a complete plan")
     variables = {k: v["value"] for k, v in data["variables"].items()}
     # A value passed via -var can be serialized as a string before Terraform's type conversion.
@@ -335,6 +377,7 @@ def review(data, *, enabled, endpoint_open=False, fleet_reads=False, origin=DEV_
         ("enable_incident_api", enabled),
         ("open_incident_api_endpoint", endpoint_open),
         ("enable_fleet_read_routes", fleet_reads),
+        ("prepare_manual_web_hosting", existing_hosting),
     ):
         value = variables.get(key)
         require(value is expected or value == str(expected).lower(), f"Wrong {key} setting or superseded plan")
@@ -349,10 +392,14 @@ def review(data, *, enabled, endpoint_open=False, fleet_reads=False, origin=DEV_
     require(len(rows) == len(changes), "Duplicate/deposed resource instances")
     routes = (ROUTES | FLEET_ROUTES) if fleet_reads else ROUTES
     api = api_addresses(routes) if enabled else set()
-    expected = BASE | api
+    expected = BASE | api | (HOSTING if existing_hosting else set())
     require(set(rows) == expected, "Unexpected/missing managed addresses: " + ", ".join(sorted(set(rows) ^ expected)))
+    if existing_hosting:
+        for address in BASE:
+            require(rows[address]["actions"] == ["no-op"], "Existing base must remain no-op: " + address)
+        check_hosting(rows, variables, origin=origin if enabled else None)
     updates = check_existing(rows, variables, root)
-    summary = {"apiResourcesIncluded": enabled}
+    summary = {"apiResourcesIncluded": enabled, "existingHostingPreserved": existing_hosting}
     if enabled:
         updates.update(review_api_changes(rows, api))
         config = {r["address"]: r for r in data["configuration"]["root_module"]["resources"]}
@@ -380,6 +427,11 @@ def main():
     parser.add_argument("plan", type=Path)
     parser.add_argument("--expect", choices=["disabled", "closed", "open"], required=True)
     parser.add_argument("--fleet-reads", action="store_true", help="Expect the ten authenticated dashboard GETs")
+    parser.add_argument(
+        "--existing-hosting",
+        action="store_true",
+        help="Require the existing manual hosting and all 29 base resources to remain no-op",
+    )
     parser.add_argument("--origin", default=DEV_ORIGIN, help="Exact registered origin expected in this plan")
     parser.add_argument("--terraform", default="terraform")
     args = parser.parse_args()
@@ -392,6 +444,7 @@ def main():
         enabled=args.expect != "disabled",
         endpoint_open=args.expect == "open",
         fleet_reads=args.fleet_reads,
+        existing_hosting=args.existing_hosting,
         origin=args.origin,
     )
     require(digest == file_hash(plan).hex(), "The saved plan changed during the review")

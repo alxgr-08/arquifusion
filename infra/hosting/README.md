@@ -1,6 +1,28 @@
 # Hosting de la SPA
 
-Amplify Hosting es el destino HTTPS elegido, pendiente de alta y registro de origen. La consulta de lectura en Academy no acredita permiso para publicar. Para un despliegue manual se entrega un ZIP con index.html y assets en la raíz, y una reescritura de rutas de la SPA hacia /index.html. [Arquitectura](../../docs/arquitectura.md) · [Despliegues manuales de Amplify](https://docs.aws.amazon.com/amplify/latest/userguide/manual-deploys.html)
+Amplify Hosting ya tiene la aplicación `af-dev-arquifusion-web` (`d2ygcm34t8aku9`) y su rama manual `demo` en AWS Academy, `us-east-1`. El origen es `https://demo.d2ygcm34t8aku9.amplifyapp.com`. La publicación del frontend y el registro de ese origen en Google siguen pendientes. Para un despliegue manual se entrega un ZIP con index.html y assets en la raíz, y una reescritura de rutas de la SPA hacia /index.html. [Arquitectura](../../docs/arquitectura.md) · [Despliegues manuales de Amplify](https://docs.aws.amazon.com/amplify/latest/userguide/manual-deploys.html)
+
+## Preparación live sin publicar
+
+`release_live.py` prepara el paquete local usando únicamente la URL real del stage obtenida del estado Terraform existente y el Client ID público acordado en #41. Rechaza archivos `.env*` locales sin leer su contenido, descarta variables Vite heredadas y establece las cinco variables públicas permitidas. Ejecuta pruebas y build; coteja la URL y el Client ID en los assets y usa el ZIP determinista del empaquetador. No ejecuta cargas, despliegues ni comandos de escritura cloud.
+
+```powershell
+python infra/hosting/release_live.py check
+# Cuando exista la salida real incident_api_base_url del API desplegado:
+python infra/hosting/release_live.py prepare --operation MINA-NORTE --terraform terraform
+```
+
+Si Terraform no está en PATH, pasar su ruta absoluta mediante `--terraform`. La herramienta no inventa una URL ni genera un ZIP live con un placeholder. El directorio de salida predeterminado es `build/readiness-20261115/web/live-release`, excluido de Git, y debe ser nuevo. `release.json` contiene solo configuración pública, SHA-256 y las condiciones pendientes de publicación. Crear el ZIP es local y no demuestra que el endpoint esté abierto, que Google tenga el origen o que el usuario tenga una concesión.
+
+El subcomando `probe` prepara por defecto cuatro solicitudes sin enviarlas. Después de abrir la API con un plan autorizado, `--send` comprueba dos GET sin identidad válida (401) y dos preflights OPTIONS para el acuse, con origen permitido y ajeno. No acepta tokens reales, no ejecuta POST, no sigue redirecciones ni lee cuerpos de respuesta. Los callbacks y el login válido se prueban aparte desde el navegador con el caso autorizado.
+
+```powershell
+python infra/hosting/release_live.py probe --operation MINA-NORTE --terraform terraform
+# Solo después de la apertura autorizada; exclusivamente GET/OPTIONS:
+python infra/hosting/release_live.py probe --operation MINA-NORTE --terraform terraform --send
+```
+
+[Checklist de preparación y ensayo](../../docs/checklist-web-2026-11-15.md) · [Plan de la API posterior al hosting](../aws/api/plan-hosting-2026-11-15.md)
 
 Después del build de Vite que se describe abajo, generar el ZIP desde la raíz del repositorio.
 
@@ -63,4 +85,4 @@ El contrato v1.2 devuelve el `ETag` de la espera en el GET de detalle y exige es
 
 ## Preparar el origen HTTPS de la demo
 
-En el estado de la aplicación, `prepare_manual_web_hosting=true` propone dos recursos adicionales, `af-dev-arquifusion-web` (Amplify WEB) y su rama manual `demo`. Terraform configura la misma reescritura del empaquetador. Se omiten repositorio Git, tokens, rol nuevo, builds automáticos y previews de PR. El output `manual_web_origin` se resuelve al crear la aplicación. Entregar ese valor exacto a Alexis para registrar el origen JavaScript en GIS y configurar CORS. La entrega del ZIP y la apertura de la API corresponden a etapas posteriores. En el Learner Lab solo se observó la lectura del listado de apps. Si se deniega el alta, evaluar Firebase con permisos confirmados del proyecto. [Terraform](../aws/hosting.tf) · [Pruebas](../aws/tests/hosting.tftest.hcl)
+El plan de hosting autorizado creó únicamente `af-dev-arquifusion-web` (Amplify WEB) y su rama manual `demo`; los 27 recursos anteriores quedaron sin cambios. El estado actual contiene 29 recursos. Conservar `prepare_manual_web_hosting=true` en los planes posteriores. Terraform configura la misma reescritura del empaquetador. La app omite repositorio Git, tokens y rol; mantiene apagados los builds automáticos y previews. `manual_web_origin` ya identifica el origen que se comunicó a Alexis en #41. La entrega del ZIP y la apertura de la API corresponden a etapas posteriores. [Terraform](../aws/hosting.tf) · [Pruebas](../aws/tests/hosting.tftest.hcl) · [Aviso a Alexis](https://github.com/alxgr-08/arquifusion/issues/41#issuecomment-6893328895)
