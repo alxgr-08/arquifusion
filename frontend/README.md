@@ -22,7 +22,7 @@ npm run build                # dist/ para alojar la SPA
 | `VITE_API_MODE` | Data |
 |---|---|
 | `mock` (default) | In-browser simulated fleet (`src/mock/`): 12 machines, technicians, parts, KPIs. Faults ramp up every 2 s and run the full incident flow, so the demo works without backend. |
-| `live` | Google sign-in first (`VITE_GOOGLE_CLIENT_ID`), then API Gateway at `VITE_API_URL` (`contracts/api.md`, include the stage, e.g. `/dev`) with the Google ID token in `Authorization`. The token is kept in this tab's sessionStorage so a reload keeps the session; it ends on sign-out, on tab close, on token expiry or on any 401, and Google One Tap signs the user back in. |
+| `live` | Google sign-in first (`VITE_GOOGLE_CLIENT_ID`), then API Gateway at `VITE_API_URL` (`contracts/api.md`, include the stage, e.g. `/dev`) with the Google ID token in `Authorization`. The token is kept in this tab's sessionStorage so a reload keeps the session; it ends on sign-out, on tab close, on token expiry or on any 401. A signed-out tab keeps automatic sign-in disabled across reloads until the user signs in again with the Google button. One Tap remains available to returning users who have not signed out. |
 
 Demo rehearsal (mock): open `/?fault=EXC-0042:BEARING_WEAR` or `/incidents?fault=TRK-0107:FUEL_BATCH_ZONE`
 to inject faults on load. Fault types: `BEARING_WEAR`, `OVERHEATING`, `HYDRAULIC_LEAK`, `FUEL_BATCH_ZONE` (whole zone, P11).
