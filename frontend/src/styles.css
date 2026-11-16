@@ -74,6 +74,7 @@ td { border-bottom: 1px solid #1c232d; padding: 0.45rem 0.4rem; vertical-align: 
 .health span { position: absolute; inset: 0; font-size: 0.75rem; text-align: center; line-height: 18px; }
 
 .map { width: 100%; border-radius: 8px; overflow: hidden; }
+.map-location { color: var(--muted); margin: -0.25rem 0 0.65rem; font-size: 0.875rem; }
 .marker {
   width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; color: #fff;
   font-size: 0.7rem; font-weight: 700; padding: 0; cursor: pointer;

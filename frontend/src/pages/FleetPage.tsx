@@ -38,6 +38,7 @@ export function FleetPage() {
         <section className="card">
           <h2>Mapa de la operación {OPERATION}</h2>
           <FleetMap
+            operationId={OPERATION}
             machines={list}
             technicians={role === "OPERATOR" ? [] : technicians.data}
             onSelect={(id) => navigate(`/machines/${id}`)}
