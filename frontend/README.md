@@ -4,7 +4,7 @@ El cliente del acuse conserva el cuerpo y el ETag de la espera revisada al reint
 
 React + Vite + TypeScript · MapLibre · Recharts. La demo usa Google Identity Services y se publica mediante un ZIP en la rama manual `demo` de Amplify. [Web de la demo](https://demo.d2ygcm34t8aku9.amplifyapp.com) · [Publicación](../infra/hosting/README.md)
 
-El mapa de flota combina OpenStreetMap con un relieve georreferenciado de la zona de ensayo en el desierto de Atacama. La web incluye el relieve en el ZIP para que se distingan los accidentes del terreno incluso donde OpenStreetMap devuelve teselas de un solo color. Los marcadores conservan las coordenadas de la API. Un estilo configurado mediante `VITE_MAP_STYLE_URL` sustituye el mapa base completo. [Datos de elevación y atribución](https://registry.opendata.aws/terrain-tiles/)
+El ensayo `ENSAYO-0001` sitúa una máquina y un técnico simulados en Chaupimarca, **Cerro de Pasco, Perú**, cerca del tajo Raúl Rojas. Los marcadores usan las coordenadas de la API. OpenStreetMap aporta las calles y los nombres de lugares. El relieve local se incluye en el ZIP para conservar una referencia del terreno si las teselas externas no cargan. La flota simulada `MINA-NORTE` conserva su escenario de Atacama. Un estilo configurado mediante `VITE_MAP_STYLE_URL` sustituye el mapa base. [Mapa turístico de Pasco](https://cdn.www.gob.pe/uploads/document/file/5567372/4951683-pasco-gppv-espanol_web_2023.pdf) · [Datos de elevación](https://registry.opendata.aws/terrain-tiles/)
 
 ## Run
 

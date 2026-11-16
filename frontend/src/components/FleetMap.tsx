@@ -1,44 +1,55 @@
-import { Map as MapLibreMap, Marker, NavigationControl, ScaleControl, setWorkerUrl, type StyleSpecification } from "maplibre-gl";
+import { LngLatBounds, Map as MapLibreMap, Marker, NavigationControl, ScaleControl, setWorkerUrl, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef } from "react";
-import terrainUrl from "../assets/relieve-flota.webp";
+import atacamaUrl from "../assets/relieve-flota.webp";
+import pascoUrl from "../assets/relieve-cerro-pasco.webp";
 import type { Machine, Technician } from "../api/types";
 import { SEVERITY_COLOR, STATUS_LABEL } from "../lib/domain";
 
 // The bundle moves maplibre-gl.mjs, so its default worker URL (relative to import.meta.url) 404s.
 setWorkerUrl(workerUrl);
 
-const FLEET_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    osm: {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+// MapLibre expects image corners clockwise from the northwest, in longitude/latitude.
+const ATACAMA = new LngLatBounds([-70.13671875, -23.725011735951792], [-69.8291015625, -23.44308893112178]);
+const PASCO = new LngLatBounds([-76.376953125, -10.790140750321735], [-76.1572265625, -10.574222078332808]);
+const TOWN_CENTER: [number, number] = [-76.257, -10.6815];
+
+function fleetStyle(pascoDemo: boolean): StyleSpecification {
+  const bounds = pascoDemo ? PASCO : ATACAMA;
+  const streets: StyleSpecification["layers"][number] = { id: "osm", type: "raster", source: "osm" };
+  const relief: StyleSpecification["layers"][number] = {
+    id: "relief", type: "raster", source: "relief",
+    paint: { "raster-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0, 11, 0.40, 13, 0.78] },
+  };
+  return {
+    version: 8,
+    sources: {
+      osm: {
+        type: "raster",
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+      },
+      relief: {
+        type: "image",
+        url: pascoDemo ? pascoUrl : atacamaUrl,
+        coordinates: [
+          bounds.getNorthWest().toArray(), bounds.getNorthEast().toArray(),
+          bounds.getSouthEast().toArray(), bounds.getSouthWest().toArray(),
+        ],
+      },
     },
-    relief: {
-      type: "image",
-      url: terrainUrl,
-      // Geographic edges of the elevation mosaic, clockwise from its NW corner.
-      coordinates: [
-        [-70.13671875, -23.44308893112178], [-69.8291015625, -23.44308893112178],
-        [-69.8291015625, -23.725011735951792], [-70.13671875, -23.725011735951792],
-      ],
-    },
-  },
-  layers: [
-    { id: "background", type: "background", paint: { "background-color": "#f2efe9" } },
-    { id: "osm", type: "raster", source: "osm" },
-    {
-      id: "relief", type: "raster", source: "relief",
-      paint: { "raster-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0, 11, 0.40, 13, 0.78] },
-    },
-  ],
-};
+    layers: [
+      { id: "background", type: "background", paint: { "background-color": "#f2efe9" } },
+      // In town keep street names legible. The local relief stays visible if street tiles are unavailable.
+      ...(pascoDemo ? [relief, streets] : [streets, relief]),
+    ],
+  };
+}
 
 interface Props {
+  operationId: string;
   machines: Machine[];
   technicians?: Technician[];
   onSelect?: (machineId: string) => void;
@@ -47,33 +58,48 @@ interface Props {
 
 const NO_TECHNICIANS: Technician[] = [];
 
-export function FleetMap({ machines, technicians = NO_TECHNICIANS, onSelect, height = 460 }: Props) {
+export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, onSelect, height = 460 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap>(null);
+  const framed = useRef(false);
   const markers = useRef<Marker[]>([]);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const pascoDemo = operationId === "ENSAYO-0001";
+  const showPascoLocation = pascoDemo && machines.some((m) => PASCO.contains([m.lon, m.lat]));
 
   useEffect(() => {
     if (!container.current) return;
     const customStyle = import.meta.env.VITE_MAP_STYLE_URL;
     map.current = new MapLibreMap({
       container: container.current,
-      style: customStyle || FLEET_STYLE,
+      style: customStyle || fleetStyle(pascoDemo),
       attributionControl: customStyle ? {} : {
         customAttribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Relieve: Mapzen · USGS</a>',
       },
-      center: [-69.98, -23.602],
+      center: pascoDemo ? TOWN_CENTER : [-69.98, -23.602],
       zoom: 13.2,
     });
     map.current.addControl(new NavigationControl(), "top-right");
     map.current.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");
-    return () => map.current?.remove();
-  }, []);
+    return () => {
+      map.current?.remove();
+      map.current = null;
+      framed.current = false;
+    };
+  }, [pascoDemo]);
 
   useEffect(() => {
     const m = map.current;
     if (!m) return;
+    if (!framed.current && machines.length) {
+      const bounds = new LngLatBounds();
+      machines.forEach((machine) => bounds.extend([machine.lon, machine.lat]));
+      technicians.forEach((tech) => bounds.extend([tech.lon, tech.lat]));
+      if (showPascoLocation) bounds.extend(TOWN_CENTER);
+      m.fitBounds(bounds, { padding: 40, maxZoom: pascoDemo ? 13.8 : 13.2, duration: 0 });
+      framed.current = true;
+    }
     markers.current.forEach((mk) => mk.remove());
     const zones = new Map<string, { lat: number; lon: number; n: number }>();
     for (const machine of machines) {
@@ -104,7 +130,10 @@ export function FleetMap({ machines, technicians = NO_TECHNICIANS, onSelect, hei
         return new Marker({ element: el }).setLngLat([t.lon, t.lat]).addTo(m);
       }),
     ];
-  }, [machines, technicians]);
+  }, [machines, technicians, pascoDemo, showPascoLocation]);
 
-  return <div ref={container} className="map" style={{ height }} />;
+  return <>
+    {showPascoLocation && <p className="map-location">Cerro de Pasco, Perú · Flota simulada</p>}
+    <div ref={container} className="map" style={{ height }} />
+  </>;
 }

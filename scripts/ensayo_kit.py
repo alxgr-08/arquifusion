@@ -66,6 +66,15 @@ def _ddb(item: dict[str, Any]) -> dict[str, Any]:
 
 def items(i: dict[str, str], now: str) -> dict[str, dict[str, Any]]:
     op, wh = i["operation"], i["warehouse"]
+    if i["run"] == "0001":
+        # The public rehearsal uses synthetic positions in Cerro de Pasco, Peru.
+        zone_point = (-10.6830, -76.2530)
+        machine_point = (-10.6829, -76.2528)
+        technician_point = (-10.6851, -76.2540)
+    else:
+        zone_point = (-23.601, -69.978)
+        machine_point = (-23.6009, -69.9775)
+        technician_point = (-23.603, -69.979)
     return {
         # Operation metadata the web needs (GET /parts uses META.warehouses; zones for the map and filters)
         "item-op-meta.json": {
@@ -82,8 +91,8 @@ def items(i: dict[str, str], now: str) -> dict[str, dict[str, Any]]:
             "zoneId": i["zone"],
             "run": i["run"],
             "name": f"Zona ensayo {i['run']}",
-            "lat": -23.601,
-            "lon": -69.978,
+            "lat": zone_point[0],
+            "lon": zone_point[1],
             "fuelBatchId": f"FB-E{i['run']}",
         },
         "item-op-warehouse.json": {
@@ -112,8 +121,8 @@ def items(i: dict[str, str], now: str) -> dict[str, dict[str, Any]]:
             "model": "EXC-320",
             "machineType": "EXCAVATOR",
             "zoneId": i["zone"],
-            "lat": -23.6009,
-            "lon": -69.9775,
+            "lat": machine_point[0],
+            "lon": machine_point[1],
             "status": "OPERATING",
             "healthScore": 100,
             "severity": "OK",
@@ -133,8 +142,8 @@ def items(i: dict[str, str], now: str) -> dict[str, dict[str, Any]]:
             "run": i["run"],
             "name": f"Técnico ensayo {i['run']}",
             "specialties": ["DRIVETRAIN", "BEARING"],
-            "lat": -23.603,
-            "lon": -69.979,
+            "lat": technician_point[0],
+            "lon": technician_point[1],
             "availability": "AVAILABLE",
             "queue": 0,
         },

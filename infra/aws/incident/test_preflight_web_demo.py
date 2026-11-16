@@ -58,6 +58,19 @@ def test_existing_kit_is_not_rewritten_or_retimestamped(kit):
     assert (kit / "anomaly-caso1-vibracion.json").read_bytes() == before
 
 
+@pytest.mark.parametrize(
+    ("run", "positions"),
+    [
+        (1, [(-10.683, -76.253), (-10.6829, -76.2528), (-10.6851, -76.254)]),
+        (7, [(-23.601, -69.978), (-23.6009, -69.9775), (-23.603, -69.979)]),
+    ],
+)
+def test_only_public_rehearsal_uses_cerro_de_pasco(run, positions):
+    rows = demo.ensayo_kit.items(demo.ensayo_kit.ids(run), "2026-11-15T00:00:00Z")
+    names = ["item-op-zone.json", "item-machine.json", "item-technician.json"]
+    assert [(rows[name]["lat"], rows[name]["lon"]) for name in names] == positions
+
+
 def test_missing_or_cross_operation_metadata_is_rejected(kit):
     path = kit / "item-op-meta.json"
     value = json.loads(path.read_text())
