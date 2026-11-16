@@ -21,7 +21,7 @@ export function IncidentsPage() {
   const list = all
     .filter((i) => !severity || i.severity === severity)
     .filter((i) => !selectedTech || i.assignedTech === selectedTech)
-    .filter((i) => !q || `${i.incidentId} ${i.machineId} ${i.zoneId} ${i.aiDiagnosis.component}`.toLowerCase().includes(q));
+    .filter((i) => !q || `${i.incidentId} ${i.machineId} ${i.zoneId} ${i.aiDiagnosis?.component ?? ""}`.toLowerCase().includes(q));
   const zones = new Set(all.filter((i) => i.zoneIncidentId).map((i) => i.zoneIncidentId));
 
   return (
@@ -97,8 +97,8 @@ export function IncidentsPage() {
                 onClick={() => setSelectedTech(selectedTech === t.techId ? undefined : t.techId)}
               >
                 <td>{t.name}<small>{t.techId}</small></td>
-                <td>{t.specialties.join(", ")}</td>
-                <td><span className={`avail ${t.availability.toLowerCase()}`}>{t.availability}</span></td>
+                <td>{t.specialties?.join(", ") ?? "—"}</td>
+                <td><span className={`avail ${(t.availability ?? "").toLowerCase()}`}>{t.availability ?? "—"}</span></td>
                 <td>{t.queue}</td>
               </tr>
             ))}

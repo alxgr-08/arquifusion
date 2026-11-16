@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { IS_MOCK } from "../api";
+import { errorMessage } from "../api/client";
 import type { Role } from "../api/types";
 
 /** Live telemetry arrives once a minute and the API stage allows 1 req/s for everyone, so live polls 5x slower. */
@@ -24,7 +25,7 @@ export function usePolling<T>(load: () => Promise<T>, intervalMs: number, deps: 
       setError(undefined);
       setUpdatedAt(Date.now());
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }

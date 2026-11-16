@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, HttpFleetApi } from "./client";
+import { ApiRequestError, errorMessage, HttpFleetApi, RateLimiter } from "./client";
 
 function reply(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -79,6 +79,69 @@ describe("HttpFleetApi", () => {
       await expect(pending).resolves.toMatchObject({ incidentId: "INC-1", state: "IN_PROGRESS" });
       expect(network).toHaveBeenCalledTimes(2);
       expect(network.mock.calls[1]).toEqual(network.mock.calls[0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries a throttled read and explains gateway errors that carry no statusText", async () => {
+    vi.useFakeTimers();
+    try {
+      const throttled = () => new Response(JSON.stringify({ message: "Too Many Requests" }), { status: 429 });
+      const network = vi.fn().mockResolvedValueOnce(throttled()).mockResolvedValueOnce(reply(200, [{ machineId: "M" }]));
+      vi.stubGlobal("fetch", network);
+      const machines = new HttpFleetApi("https://api.test/dev", () => "tok").listMachines("OP");
+      await vi.runAllTimersAsync();
+      await expect(machines).resolves.toEqual([{ machineId: "M" }]);
+      expect(network).toHaveBeenCalledTimes(2);
+
+      network.mockReset().mockImplementation(async () => throttled());
+      const failing = new HttpFleetApi("https://api.test/dev", () => "tok").listMachines("OP");
+      const assertion = expect(failing).rejects.toMatchObject({ status: 429, code: "THROTTLED", message: "Too Many Requests" });
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(network).toHaveBeenCalledTimes(3);
+      expect(errorMessage(new ApiRequestError(429, "THROTTLED", ""))).toContain("limitando");
+      expect(errorMessage(new ApiRequestError(503, "HTTP_ERROR", ""))).toContain("HTTP 503");
+      expect(errorMessage(new TypeError("Failed to fetch"))).toContain("conectar");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("repeats the identical ack after a gateway throttle or Lambda concurrency limit", async () => {
+    vi.useFakeTimers();
+    try {
+      const network = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ message: "Too Many Requests" }), { status: 429 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ message: "Service Unavailable" }), { status: 503 }))
+        .mockResolvedValueOnce(reply(200, { incidentId: "INC-1", state: "IN_PROGRESS" }));
+      vi.stubGlobal("fetch", network);
+      const pending = new HttpFleetApi("https://api.test/dev", () => "tok")
+        .ackIncident("EXC-0042", "INC-1", "ARRIVED", '"wait4"');
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ state: "IN_PROGRESS" });
+      expect(network).toHaveBeenCalledTimes(3);
+      expect(network.mock.calls[2]).toEqual(network.mock.calls[0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("spaces requests beyond the burst to stay under the stage rate", async () => {
+    vi.useFakeTimers();
+    try {
+      const network = vi.fn().mockImplementation(async () => reply(200, []));
+      vi.stubGlobal("fetch", network);
+      const api = new HttpFleetApi("https://api.test/dev", () => "tok", undefined, new RateLimiter(1, 3));
+      const all = Promise.all(Array.from({ length: 5 }, () => api.listMachines("OP")));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(network).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(network).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1000);
+      await all;
+      expect(network).toHaveBeenCalledTimes(5);
     } finally {
       vi.useRealTimers();
     }
