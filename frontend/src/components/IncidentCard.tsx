@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { ApiRequestError } from "../api/client";
+import { ApiRequestError, errorMessage } from "../api/client";
 import type { Incident } from "../api/types";
 import { formatTime, METRIC_LABEL, ROLE_LABEL } from "../lib/domain";
 import { useRole } from "../lib/hooks";
@@ -13,20 +13,6 @@ const STATE_LABEL: Record<Incident["state"], string> = {
   ASSIGNED: "Asignado",
   IN_PROGRESS: "En reparación",
   RESOLVED: "Resuelto",
-};
-
-const ACK_ERROR: Record<string, string> = {
-  NO_GRANT: "Tu cuenta no tiene acceso a esta operación.",
-  OTHER_OPERATION: "Este incidente es de otra operación.",
-  FORBIDDEN: "Tu rol no puede confirmar incidentes.",
-  NOT_ASSIGNED: "Solo el técnico asignado puede confirmar.",
-  NO_TECH_ID: "Tu cuenta no está vinculada a un técnico.",
-  GRANT_CHANGED: "Tus permisos cambiaron; vuelve a intentarlo.",
-  CALLBACK_PENDING: "La confirmación quedó guardada; inténtalo de nuevo en unos segundos.",
-  STALE_WAIT: "La espera cambió. Revisa la asignación y confirma de nuevo.",
-  TASK_EXPIRED: "La espera venció. Consulta la asignación actual.",
-  WAIT_NEEDS_RECONCILIATION: "La espera necesita revisión de mantenimiento.",
-  WRONG_STAGE: "El incidente ya cambió de etapa. Actualiza el detalle.",
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -42,18 +28,28 @@ export function IncidentCard({ incident, compact, onChange }: { incident: Incide
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [ackError, setAckError] = useState<string>();
+  const [ackInfo, setAckInfo] = useState<string>();
   const [review, setReview] = useState<{ incident: Incident; etag: string | null }>();
+  const recheck = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(recheck.current), []);
   const i = review?.incident ?? incident;
-  const inspect = async () => {
+  const inspect = async (keepMessages = false) => {
     setBusy(true);
-    setAckError(undefined);
+    if (!keepMessages) {
+      setAckError(undefined);
+      setAckInfo(undefined);
+    }
     try {
       const seen = await api.getIncident(incident.machineId, incident.incidentId);
       setReview(seen);
-      if (!seen.etag) setAckError("El flujo aún no tiene una espera activa para confirmar.");
+      setAckInfo(
+        !seen.etag && seen.incident.state !== "RESOLVED"
+          ? "El flujo aún no tiene una espera activa para confirmar. Vuelve a revisar en unos segundos."
+          : undefined,
+      );
     } catch (err) {
       setReview(undefined);
-      setAckError(err instanceof ApiRequestError ? (ACK_ERROR[err.code] ?? err.message) : String(err));
+      setAckError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -62,20 +58,28 @@ export function IncidentCard({ incident, compact, onChange }: { incident: Incide
     if (!review?.etag) return;
     setBusy(true);
     setAckError(undefined);
+    setAckInfo(undefined);
     try {
-      await api.ackIncident(i.machineId, i.incidentId, action, review.etag);
+      const updated = await api.ackIncident(i.machineId, i.incidentId, action, review.etag);
       toast({
         text: action === "ARRIVED" ? `Llegada confirmada en ${i.machineId}` : `${i.incidentId} resuelto`,
         severity: "OK",
       });
-      setReview(undefined);
+      setReview({ incident: updated, etag: null });
       onChange();
-    } catch (err) {
-      if (err instanceof ApiRequestError && [401, 403, 409, 412, 428].includes(err.status)) {
-        setReview(undefined);
-        onChange();
+      if (action === "ARRIVED") {
+        // The workflow arms the resolution wait a moment after the arrival; fetch its ETag for the next click.
+        setAckInfo("Llegada registrada. Preparando la confirmación de resolución…");
+        recheck.current = setTimeout(() => inspect(true), 4000);
       }
-      setAckError(err instanceof ApiRequestError ? (ACK_ERROR[err.code] ?? err.message) : String(err));
+    } catch (err) {
+      setAckError(errorMessage(err));
+      if (err instanceof ApiRequestError && [409, 412, 428].includes(err.status)) {
+        onChange();
+        await inspect(true); // show the current wait so the user can decide again
+      } else if (err instanceof ApiRequestError && [401, 403].includes(err.status)) {
+        setReview(undefined);
+      }
     } finally {
       setBusy(false);
     }
@@ -94,17 +98,19 @@ export function IncidentCard({ incident, compact, onChange }: { incident: Incide
         <span className="pill">{STATE_LABEL[i.state]}</span>
       </header>
 
-      {i.zoneIncidentId && i.aiDiagnosis.zoneCause && (
+      {i.zoneIncidentId && i.aiDiagnosis?.zoneCause && (
         <p className="zone">⚠ Incidente de zona {i.zoneIncidentId}: {i.aiDiagnosis.zoneCause}</p>
       )}
 
-      <p className="message">
-        <span className="muted">Para {ROLE_LABEL[role]}:</span> {i.messages[role]}
-      </p>
+      {i.messages?.[role] && (
+        <p className="message">
+          <span className="muted">Para {ROLE_LABEL[role]}:</span> {i.messages[role]}
+        </p>
+      )}
 
       {!compact && (
         <>
-          <div className="diag">
+          {i.aiDiagnosis && <div className="diag">
             <span className="tag">IA · {i.aiDiagnosis.source === "BEDROCK" ? "Claude (Bedrock)" : "Reglas"}</span>
             <strong>{i.aiDiagnosis.probableCause}</strong>
             <span>Acción: {i.aiDiagnosis.recommendedAction}</span>
@@ -112,7 +118,7 @@ export function IncidentCard({ incident, compact, onChange }: { incident: Incide
               Componente {i.aiDiagnosis.component} · confianza {i.aiDiagnosis.confidence} · ~
               {i.aiDiagnosis.estimatedRepairMinutes} min
             </span>
-          </div>
+          </div>}
           {i.signals.length > 0 && (
             <ul className="signals">
               {i.signals.map((s) => (
@@ -146,11 +152,12 @@ export function IncidentCard({ incident, compact, onChange }: { incident: Incide
 
       {canAct && i.state !== "RESOLVED" && (
         <div className="row">
-          {(!review?.etag) && <button disabled={busy} onClick={inspect}>Revisar espera y asignación</button>}
+          {(!review?.etag) && <button disabled={busy} onClick={() => inspect()}>Revisar espera y asignación</button>}
           {review?.etag && i.state === "ASSIGNED" && <button disabled={busy} onClick={() => ack("ARRIVED")}>Confirmar llegada</button>}
           {review?.etag && i.state === "IN_PROGRESS" && <button disabled={busy} onClick={() => ack("RESOLVED")}>Confirmar resolución</button>}
         </div>
       )}
+      {ackInfo && !ackError && <p className="muted">{ackInfo}</p>}
       {ackError && <p className="error">{ackError}</p>}
     </article>
   );

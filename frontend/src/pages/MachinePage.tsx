@@ -4,6 +4,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { api } from "../api";
 import { HealthBar, SeverityBadge, StatusBadge } from "../components/Badges";
 import { IncidentCard } from "../components/IncidentCard";
+import { ErrorBanner } from "../components/Live";
 import { formatDateTime, formatTime, hoursToMaintenance, METRIC_LABEL } from "../lib/domain";
 import { usePolling } from "../lib/hooks";
 
@@ -27,8 +28,7 @@ export function MachinePage() {
   const maintenance = usePolling(() => api.getMaintenance(machineId), 10000, [machineId]);
 
   const m = machine.data;
-  if (machine.error) return <p className="error">{machine.error}</p>;
-  if (!m) return <p className="muted">Cargando…</p>;
+  if (!m) return machine.error ? <ErrorBanner error={machine.error} onRetry={machine.refresh} /> : <p className="muted">Cargando…</p>;
 
   const due = hoursToMaintenance(m.engineHours, m.lastMaintenanceHours, m.maintenanceIntervalHours);
   const data = (readings.data ?? []).slice(-90).map((r) => ({
@@ -52,7 +52,7 @@ export function MachinePage() {
         <div className="grow"><HealthBar value={m.healthScore} severity={m.severity} /></div>
         <div className="kv">
           <span>Horas motor</span>
-          <strong>{m.engineHours.toFixed(1)}</strong>
+          <strong>{m.engineHours?.toFixed(1) ?? "—"}</strong>
         </div>
         <div className="kv">
           <span>Próximo mantenimiento</span>

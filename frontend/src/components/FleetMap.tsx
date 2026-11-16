@@ -1,7 +1,7 @@
 import { LngLatBounds, Map as MapLibreMap, Marker, NavigationControl, ScaleControl, setWorkerUrl, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import atacamaUrl from "../assets/relieve-flota.webp";
 import pascoUrl from "../assets/relieve-cerro-pasco.webp";
 import type { Machine, Technician } from "../api/types";
@@ -59,8 +59,9 @@ interface Props {
 }
 
 const NO_TECHNICIANS: Technician[] = [];
+const located = (p: { lat?: number; lon?: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lon);
 
-export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, onSelect, onHover, highlight, height = 460 }: Props) {
+export function FleetMap({ operationId, machines: allMachines, technicians: allTechnicians = NO_TECHNICIANS, onSelect, onHover, highlight, height = 460 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap>(null);
   const framed = useRef(false);
@@ -70,6 +71,9 @@ export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, 
   onSelectRef.current = onSelect;
   const onHoverRef = useRef(onHover);
   onHoverRef.current = onHover;
+  // MapLibre throws on a NaN coordinate, which would blank the page: skip rows without a position.
+  const machines = useMemo(() => allMachines.filter(located), [allMachines]);
+  const technicians = useMemo(() => allTechnicians.filter(located), [allTechnicians]);
   const pascoDemo = operationId === "ENSAYO-0001";
   const showPascoLocation = pascoDemo && machines.some((m) => PASCO.contains([m.lon, m.lat]));
 
@@ -133,8 +137,8 @@ export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, 
       }),
       ...technicians.map((t) => {
         const el = document.createElement("div");
-        el.className = `marker tech ${t.availability.toLowerCase()}`;
-        el.title = `${t.name} (${t.techId}) · ${t.availability}`;
+        el.className = `marker tech ${(t.availability ?? "").toLowerCase()}`;
+        el.title = `${t.name} (${t.techId}) · ${t.availability ?? "sin estado"}`;
         el.textContent = "T";
         return new Marker({ element: el }).setLngLat([t.lon, t.lat]).addTo(m);
       }),

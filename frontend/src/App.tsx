@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { IS_MOCK, OPERATION, setAuthToken, setUnauthorizedHandler } from "./api";
 import type { Role } from "./api/types";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider, useIncidentWatcher } from "./components/Live";
 import { LoginScreen } from "./components/LoginScreen";
 import { persistSession, restoreSession, signOutGoogle, type Session } from "./lib/auth";
@@ -44,6 +45,7 @@ export function App() {
 function Shell() {
   const [role, setRole] = useStoredState<Role>("af.role", "MAINT_LEAD");
   const [session, setSession] = useState<Session | undefined>(restored);
+  const { pathname } = useLocation();
   const signedIn = IS_MOCK || !!session;
   const watch = useIncidentWatcher(signedIn);
   const allowed = new Set(NAV[role].map((n) => n.to));
@@ -108,17 +110,19 @@ function Shell() {
         )}
       </header>
       <main>
-        <Suspense fallback={<p className="muted">Cargando…</p>}>
-          <Routes>
-            <Route path="/" element={<FleetPage />} />
-            <Route path="/machines/:machineId" element={<MachinePage />} />
-            <Route path="/machines/:machineId/incidents/:incidentId" element={<IncidentPage />} />
-            <Route path="/incidents" element={<IncidentsPage />} />
-            <Route path="/kpis" element={allowed.has("/kpis") ? <KpisPage /> : <Navigate to="/" />} />
-            <Route path="/parts" element={allowed.has("/parts") ? <PartsPage /> : <Navigate to="/" />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </Suspense>
+        <ErrorBoundary key={pathname}>
+          <Suspense fallback={<p className="muted">Cargando…</p>}>
+            <Routes>
+              <Route path="/" element={<FleetPage />} />
+              <Route path="/machines/:machineId" element={<MachinePage />} />
+              <Route path="/machines/:machineId/incidents/:incidentId" element={<IncidentPage />} />
+              <Route path="/incidents" element={<IncidentsPage />} />
+              <Route path="/kpis" element={allowed.has("/kpis") ? <KpisPage /> : <Navigate to="/" />} />
+              <Route path="/parts" element={allowed.has("/parts") ? <PartsPage /> : <Navigate to="/" />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </RoleContext.Provider>
   );
