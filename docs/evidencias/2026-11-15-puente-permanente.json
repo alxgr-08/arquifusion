@@ -1,0 +1,180 @@
+{
+  "verifiedAtUtc": "2026-11-16T02:59:56.752338+00:00",
+  "scope": "telemetry and daily KPI",
+  "awsRegion": "us-east-1",
+  "operation": "AF-BRIDGE-PERU",
+  "machine": "BRG-8115",
+  "kpiDayUtc": "2026-11-16",
+  "sourceObjects": [
+    {
+      "key": "records/2026/11/16/02/af-dev-telemetry-1-2026-11-16-02-40-48-a46c1e84-8710-4eac-b20d-a80171e2f981.parquet",
+      "etag": "d0828ec31bb3e3b11d6783fdfde2e744",
+      "bytes": 3461,
+      "sha256": "f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c",
+      "messageId": "7fd1b9a4-90af-47f9-ae2d-008463b2397b",
+      "rows": 1,
+      "observed": "2026-11-16T02:41:53+00:00"
+    },
+    {
+      "key": "records/2026/11/16/02/af-dev-telemetry-1-2026-11-16-02-46-14-4b463c52-2a5c-49ef-84a7-524df5f05eaa.parquet",
+      "etag": "43b45a9ec113b282d91537981721aabc",
+      "bytes": 3461,
+      "sha256": "ca68486f36de08a4300ca379909efef4c2103df19b8e5636a49b8adce0b5f664",
+      "messageId": "7b04d968-6a55-4880-81dc-99e764da0f64",
+      "rows": 1,
+      "observed": "2026-11-16T02:47:23+00:00"
+    }
+  ],
+  "replayedNotification": {
+    "state": "accepted",
+    "sqsMessageId": "f4a4056d-4090-4044-aefe-0ac6d823af20",
+    "sha256": "f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c"
+  },
+  "google": {
+    "project": "airi-erp",
+    "dataset": "af_bridge",
+    "datasetLocation": "US",
+    "checks": {
+      "telemetry_raw": {
+        "rows": 2,
+        "allFieldsMatch": true,
+        "verificationJob": "77b01cee-5e2d-4875-9014-3fc6b1299742"
+      },
+      "telemetry": {
+        "rows": 2,
+        "allFieldsMatch": true,
+        "verificationJob": "c45ee2ac-9a71-4e56-84d9-29aa62849a57"
+      }
+    },
+    "loadJobs": [
+      "af_load_f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c_0",
+      "af_load_ca68486f36de08a4300ca379909efef4c2103df19b8e5636a49b8adce0b5f664_0"
+    ],
+    "loadIdentity": "af-bridge-worker@airi-erp.iam.gserviceaccount.com",
+    "scheduler": {
+      "name": "af-bridge-hourly",
+      "state": "ENABLED",
+      "cron": "52 * * * *",
+      "timezone": "America/Lima",
+      "regularExecutions": [
+        {
+          "name": "af-bridge-nfw24",
+          "created": "2026-11-16T02:52:03.765545Z",
+          "ended": "2026-11-16T02:52:30.984880Z",
+          "succeeded": 1,
+          "failed": 0,
+          "condition": [
+            [
+              "CONDITION_SUCCEEDED",
+              null,
+              "Execution completed successfully in 23.72s."
+            ]
+          ]
+        }
+      ]
+    },
+    "processedObjects": [
+      {
+        "execution": "af-bridge-nfw24",
+        "utc": "2026-11-16T02:52:25.029005+00:00",
+        "sha256": "f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c",
+        "loadJob": "af_load_f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c_0",
+        "queryJob": "31cb5118-4bba-4d11-9b5b-90a0db6b4dc1",
+        "sourceRows": 1,
+        "kpi": {
+          "already_present": 1
+        }
+      },
+      {
+        "execution": "af-bridge-s5c9f",
+        "utc": "2026-11-16T02:49:17.305717+00:00",
+        "sha256": "ca68486f36de08a4300ca379909efef4c2103df19b8e5636a49b8adce0b5f664",
+        "loadJob": "af_load_ca68486f36de08a4300ca379909efef4c2103df19b8e5636a49b8adce0b5f664_0",
+        "queryJob": "2bf9a6a7-745c-4058-8f0f-a41dd1186d24",
+        "sourceRows": 1,
+        "kpi": {
+          "verified": 1
+        }
+      },
+      {
+        "execution": "af-bridge-s5c9f",
+        "utc": "2026-11-16T02:49:10.914421+00:00",
+        "sha256": "f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c",
+        "loadJob": "af_load_f99f04b83b6a48246551848869eabd9f3aefcefd8a1c20489d557f8c9d13e82c_0",
+        "queryJob": "2908c1f2-3356-47c9-8c0d-1c72ba428361",
+        "sourceRows": 1,
+        "kpi": {
+          "verified": 1
+        }
+      }
+    ]
+  },
+  "dynamo": {
+    "table": "af-dev-arquifusion",
+    "key": {
+      "PK": "MACHINE#BRG-8115",
+      "SK": "KPI#2026-11-16"
+    },
+    "partitionItems": 2,
+    "kpiUnchangedOnReplay": true,
+    "kpi": {
+      "costPerHour": 2418.7,
+      "utilizationPct": 2.1,
+      "PK": "MACHINE#BRG-8115",
+      "operationId": "AF-BRIDGE-PERU",
+      "fuelLitersPerTon": 0.447,
+      "model": "AF-BRIDGE-DEMO",
+      "source": "bigquery",
+      "sourceProject": "airi-erp",
+      "GSI1SK": "BRG-8115",
+      "tonsMoved": 38,
+      "fuelAnomaly": false,
+      "SK": "KPI#2026-11-16",
+      "downHours": 0,
+      "fuelLitersPerTonModel": 0.447,
+      "sourceReadings": 2,
+      "fuelLiters": 17,
+      "operatingHours": 0.5,
+      "GSI1PK": "OP#AF-BRIDGE-PERU#KPI#2026-11-16",
+      "date": "2026-11-16",
+      "overuseHours": 0.25,
+      "machineId": "BRG-8115",
+      "idleHours": 0,
+      "sourceMessageId": "7b04d968-6a55-4880-81dc-99e764da0f64",
+      "sourceDayReadings": 2
+    }
+  },
+  "anonymousHTTP": {
+    "lease": 401,
+    "kpi": 401
+  },
+  "queues": {
+    "af-dev-airi-delivery": {
+      "ApproximateNumberOfMessages": 0,
+      "ApproximateNumberOfMessagesNotVisible": 0
+    },
+    "af-dev-airi-dead": {
+      "ApproximateNumberOfMessages": 0,
+      "ApproximateNumberOfMessagesNotVisible": 0
+    }
+  },
+  "incidentRule": "DISABLED",
+  "mainTerraformStateLastModified": "2026-11-15T19:55:29+00:00",
+  "image": {
+    "id": "fa2c7c63-0b97-45af-9015-475cedd28081",
+    "digest": "sha256:2c32a3a6c5d2f473b847c4c4bbee9866d758748f513f3582a207535370c0b488",
+    "image": "us-east1-docker.pkg.dev/airi-erp/af-bridge/worker:src-8647db0ad7929f89",
+    "status": "SUCCESS"
+  },
+  "planSHA256": {
+    "connect.tfplan": "e58186e6299a4e62478dd2c26801dc4b5f47c814ff3f89f92aa46348a23a7058",
+    "fa2c7c63-0b97-45af-9015-475cedd28081.tfplan": "de66bc3292a23505b1c65bf4fd28c46e63096c3ff75511cf033201d68d14eea2",
+    "final.tfplan": "a85f9d3c2e49992e9d1aa872ba23dba5669960b3eb516b1591c89373b05cdb97",
+    "foundation.tfplan": "9c69c153cfa15ceb02e38de109c521a10c18c7ef5b5ed7217c04bb21e4fb5958"
+  },
+  "finalTerraform": {
+    "create": 0,
+    "update": 0,
+    "delete": 0
+  }
+}
