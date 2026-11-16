@@ -10,7 +10,7 @@ El ensayo `ENSAYO-0001` sitúa una máquina y un técnico simulados en Chaupimar
 
 ```bash
 cd frontend
-npm install
+npm ci
 cp .env.example .env.local   # VITE_API_MODE=mock by default
 npm run dev                  # http://localhost:5173
 npm test

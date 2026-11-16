@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="450" viewBox="0 0 1200 450" role="img" aria-labelledby="title description">
+  <title id="title">Diagrama de arquitectura pendiente de actualización</title>
+  <desc id="description">Espacio reservado para que el equipo coloque su diagrama final de ArquiFusion.</desc>
+  <rect x="2" y="2" width="1196" height="446" rx="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="12 8"/>
+  <text x="600" y="210" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" fill="#334155">Diagrama de arquitectura</text>
+  <text x="600" y="258" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" fill="#64748b">Espacio reservado para la versión final</text>
+</svg>

@@ -2,6 +2,8 @@
 
 Arquitectura vigente y evidencias por entorno: [ArquiFusion](arquitectura.md).
 
+**Actualización del 15/11, posterior a #64:** el puente de telemetría usa Cloud Scheduler y Cloud Run cada hora con identidad de servicio y estado Terraform independiente. La CI prepara la vista previa web y valida el repositorio; los controles de seguridad revisan historial, archivos y dependencias. La regla de incidentes de Academy continúa deshabilitada y los acuses corresponden al técnico. Las secciones siguientes conservan las decisiones y los cortes históricos. [Puente horario](../infra/bridge_airi/README.md) · [Controles automáticos](ONBOARDING.md#controles-automáticos) · [Política de seguridad](../SECURITY.md)
+
 | Date | Decision | Reason |
 |---|---|---|
 | 2026-11-14 | Monorepo with contracts-first model | Each role works against `contracts/` without waiting for others |

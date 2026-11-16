@@ -1,0 +1,3 @@
+# Synthetic DynamoDB pagination cursor in the original API example, removed in #40.
+# It decodes to PK/SK/GSI1PK/GSI1SK and is not an authentication credential.
+5401e3c790161981d7ab31383b3f1a16210818fe:contracts/examples/api/get-operation-machines.json:generic-api-key:50
