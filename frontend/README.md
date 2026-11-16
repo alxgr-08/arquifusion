@@ -2,7 +2,9 @@
 
 El cliente del acuse conserva el cuerpo y el ETag de la espera revisada al reintentar un 503, un fallo de red o un JSON de respuesta truncado después de un HTTP 200. Respeta `Retry-After`, limita los intentos y cancela el reintento si cambia la sesión. Los tests locales cubren esos casos y el build de producción pasó la comprobación de TypeScript.
 
-React + Vite + TypeScript · MapLibre · Recharts. Google Identity Services en modo live. Amplify Hosting es el destino elegido, pendiente de despliegue. [Arquitectura](../docs/arquitectura.md)
+React + Vite + TypeScript · MapLibre · Recharts. La demo usa Google Identity Services y se publica mediante un ZIP en la rama manual `demo` de Amplify. [Web de la demo](https://demo.d2ygcm34t8aku9.amplifyapp.com) · [Publicación](../infra/hosting/README.md)
+
+El mapa de flota combina OpenStreetMap con un relieve georreferenciado de la zona de ensayo en el desierto de Atacama. La web incluye el relieve en el ZIP para que se distingan los accidentes del terreno incluso donde OpenStreetMap devuelve teselas de un solo color. Los marcadores conservan las coordenadas de la API. Un estilo configurado mediante `VITE_MAP_STYLE_URL` sustituye el mapa base completo. [Datos de elevación y atribución](https://registry.opendata.aws/terrain-tiles/)
 
 ## Run
 
