@@ -55,3 +55,46 @@ describe("sessionFromIdToken", () => {
     expect(sessionFromIdToken("a.%%%.c", NOW)).toBeUndefined();
   });
 });
+
+describe("session across reloads", () => {
+  let auth: typeof import("./auth");
+  const store = new Map<string, string>();
+
+  beforeEach(async () => {
+    store.clear();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+    vi.stubEnv("VITE_GOOGLE_CLIENT_ID", CLIENT_ID);
+    vi.resetModules();
+    auth = await import("./auth");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("restores a saved, still valid session", () => {
+    const token = jwt({ email: "tech@example.com", exp: NOW + 3600, aud: CLIENT_ID });
+    auth.persistSession(auth.sessionFromIdToken(token, NOW));
+    expect(auth.restoreSession(NOW)?.email).toBe("tech@example.com");
+  });
+
+  it("drops an expired saved session", () => {
+    const token = jwt({ email: "tech@example.com", exp: NOW + 3600, aud: CLIENT_ID });
+    auth.persistSession(auth.sessionFromIdToken(token, NOW));
+    expect(auth.restoreSession(NOW + 3600)).toBeUndefined();
+    expect(store.size).toBe(0);
+  });
+
+  it("forgets the session on sign-out", () => {
+    const token = jwt({ email: "tech@example.com", exp: NOW + 3600, aud: CLIENT_ID });
+    auth.persistSession(auth.sessionFromIdToken(token, NOW));
+    vi.stubGlobal("window", {});
+    auth.signOutGoogle();
+    expect(auth.restoreSession(NOW)).toBeUndefined();
+  });
+});

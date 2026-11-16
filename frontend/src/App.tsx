@@ -2,10 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { IS_MOCK, OPERATION, setAuthToken, setUnauthorizedHandler } from "./api";
 import type { Role } from "./api/types";
+import { ToastProvider, useIncidentWatcher } from "./components/Live";
 import { LoginScreen } from "./components/LoginScreen";
-import { signOutGoogle, type Session } from "./lib/auth";
+import { persistSession, restoreSession, signOutGoogle, type Session } from "./lib/auth";
 import { ROLE_LABEL } from "./lib/domain";
-import { RoleContext } from "./lib/hooks";
+import { RoleContext, useStoredState } from "./lib/hooks";
 
 const FleetPage = lazy(() => import("./pages/FleetPage").then((m) => ({ default: m.FleetPage })));
 const IncidentsPage = lazy(() => import("./pages/IncidentsPage").then((m) => ({ default: m.IncidentsPage })));
@@ -28,13 +29,28 @@ const NAV: Record<Role, { to: string; label: string }[]> = {
   MANAGER: [{ to: "/kpis", label: "KPIs" }, { to: "/", label: "Flota" }, { to: "/incidents", label: "Incidentes" }, { to: "/parts", label: "Repuestos" }],
 };
 
+// A token saved by this tab survives a reload (F5) until it expires.
+const restored = IS_MOCK ? undefined : restoreSession();
+if (restored) setAuthToken(restored.idToken);
+
 export function App() {
-  const [role, setRole] = useState<Role>("MAINT_LEAD");
-  const [session, setSession] = useState<Session>();
+  return (
+    <ToastProvider>
+      <Shell />
+    </ToastProvider>
+  );
+}
+
+function Shell() {
+  const [role, setRole] = useStoredState<Role>("af.role", "MAINT_LEAD");
+  const [session, setSession] = useState<Session | undefined>(restored);
+  const signedIn = IS_MOCK || !!session;
+  const watch = useIncidentWatcher(signedIn);
   const allowed = new Set(NAV[role].map((n) => n.to));
 
   const signIn = useCallback((s: Session) => {
     setAuthToken(s.idToken);
+    persistSession(s);
     setSession(s);
   }, []);
   const signOut = useCallback(() => {
@@ -54,7 +70,7 @@ export function App() {
     return () => clearTimeout(timer);
   }, [session, signOut]);
 
-  if (!IS_MOCK && !session) return <LoginScreen onSession={signIn} />;
+  if (!signedIn) return <LoginScreen onSession={signIn} />;
 
   return (
     <RoleContext.Provider value={{ role, setRole }}>
@@ -68,6 +84,11 @@ export function App() {
           {NAV[role].map((n) => (
             <NavLink key={n.to} to={n.to} end>
               {n.label}
+              {n.to === "/incidents" && watch.open > 0 && (
+                <span className={`count ${watch.critical ? "critical" : ""}`} title={`${watch.open} incidente(s) abierto(s)`}>
+                  {watch.open}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

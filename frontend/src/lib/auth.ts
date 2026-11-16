@@ -1,4 +1,8 @@
-/** Google Identity Services sign-in. The ID token lives only in memory and goes to API Gateway as a Bearer JWT. */
+/**
+ * Google Identity Services sign-in. The ID token goes to API Gateway as a Bearer JWT.
+ * It is kept in sessionStorage (this tab only, cleared when the tab closes) so reloading the page keeps the session
+ * until the token expires; after that Google One Tap signs the user back in (silently when Google allows it).
+ */
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
 const EXPIRY_MARGIN_S = 60;
@@ -13,8 +17,14 @@ export interface Session {
 }
 
 interface GoogleIdApi {
-  initialize(config: { client_id: string; callback: (r: { credential: string }) => void; auto_select?: boolean }): void;
+  initialize(config: {
+    client_id: string;
+    callback: (r: { credential: string }) => void;
+    auto_select?: boolean;
+    cancel_on_tap_outside?: boolean;
+  }): void;
   renderButton(parent: HTMLElement, options: Record<string, string | number>): void;
+  prompt(): void;
   disableAutoSelect(): void;
 }
 
@@ -50,6 +60,29 @@ export function sessionFromIdToken(idToken: string, nowS = Date.now() / 1000): S
   }
 }
 
+const STORAGE_KEY = "af.session";
+
+/** Session saved by an earlier load of this tab, if its token is still valid. */
+export function restoreSession(nowS = Date.now() / 1000): Session | undefined {
+  try {
+    const token = sessionStorage.getItem(STORAGE_KEY);
+    const session = token ? sessionFromIdToken(token, nowS) : undefined;
+    if (token && !session) sessionStorage.removeItem(STORAGE_KEY);
+    return session;
+  } catch {
+    return undefined;
+  }
+}
+
+export function persistSession(session: Session | undefined): void {
+  try {
+    if (session) sessionStorage.setItem(STORAGE_KEY, session.idToken);
+    else sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage blocked (private mode): the session lives only in memory
+  }
+}
+
 let loading: Promise<GoogleIdApi> | undefined;
 
 function loadGis(): Promise<GoogleIdApi> {
@@ -71,15 +104,18 @@ export async function renderGoogleButton(parent: HTMLElement, onSession: (s: Ses
   const gis = await loadGis();
   gis.initialize({
     client_id: GOOGLE_CLIENT_ID,
-    auto_select: false,
+    auto_select: true, // a returning user is signed back in by One Tap
+    cancel_on_tap_outside: false,
     callback: ({ credential }) => {
       const session = sessionFromIdToken(credential);
       if (session) onSession(session);
     },
   });
   gis.renderButton(parent, { theme: "filled_black", size: "large", text: "signin_with", locale: "es" });
+  gis.prompt();
 }
 
 export function signOutGoogle(): void {
+  persistSession(undefined);
   window.google?.accounts?.id.disableAutoSelect();
 }

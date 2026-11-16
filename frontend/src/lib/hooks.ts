@@ -12,15 +12,21 @@ export const POLL_SCALE = IS_MOCK ? 1 : 5;
 export function usePolling<T>(load: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string>();
+  const [updatedAt, setUpdatedAt] = useState<number>();
+  const [loading, setLoading] = useState(false);
   const loadRef = useRef(load);
   loadRef.current = load;
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
       setData(await loadRef.current());
       setError(undefined);
+      setUpdatedAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -47,7 +53,40 @@ export function usePolling<T>(load: () => Promise<T>, intervalMs: number, deps: 
     };
   }, [intervalMs, refresh, ...deps]);
 
-  return { data, error, refresh };
+  return { data, error, refresh, updatedAt, loading };
+}
+
+/** Re-renders every `ms` so relative times ("hace 5 s") stay current. */
+export function useNow(ms = 1000): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(id);
+  }, [ms]);
+  return now;
+}
+
+/** A value kept in localStorage (per browser), e.g. the selected role. */
+export function useStoredState<T extends string>(key: string, initial: T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T | null) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = useCallback(
+    (v: T) => {
+      setValue(v);
+      try {
+        localStorage.setItem(key, v);
+      } catch {
+        // storage blocked: keep it in memory
+      }
+    },
+    [key],
+  );
+  return [value, set];
 }
 
 export const RoleContext = createContext<{ role: Role; setRole: (r: Role) => void }>({
