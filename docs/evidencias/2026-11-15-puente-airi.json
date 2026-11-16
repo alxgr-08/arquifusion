@@ -1,0 +1,89 @@
+{
+  "project": "ArquiFusion",
+  "verifiedAtUtc": "2026-11-16T02:09:42+00:00",
+  "type": "operator-triggered round trip; Firehose and Glue removed after the replay",
+  "baseCommit": "fff1937",
+  "reading": {
+    "messageId": "2c4d6dec-82ee-4328-9d0c-91a22d0610fd",
+    "machineId": "TLQOA-8114",
+    "operationId": "AF-LAKE-TEST-E05CD08C16854311B14787F6C1DFCF72",
+    "observedAtUtc": "2026-11-16T01:56:32Z",
+    "observedAtLima": "2026-11-15T20:56:32-05:00",
+    "model": "AF-LAKE-MODEL-E05CD08C16854311B14787F6C1DFCF72"
+  },
+  "awsIngestion": {
+    "region": "us-east-1",
+    "firehosePutRecordRequests": 1,
+    "requestId": "e87cf5cb-e9ac-af07-8b08-90b0820c2cf9",
+    "objectDuringTrial": "s3://af-dev-arquifusion-pq-20261116t015632z-59952e416e/records/2026/11/16/01/af-dev-parquet-smoke-20261116t015632z-59952e416e-1-2026-11-16-01-58-19-0d51fde6-e332-4e64-bcf6-c4d4d919bbe4.parquet",
+    "format": "Parquet",
+    "codec": [
+      "SNAPPY"
+    ],
+    "bytes": 3790,
+    "rows": 1,
+    "sha256": "fedf648256a9ca8668b5df39250d10fe2027494e09f45088b5469a8e46ddd69d",
+    "allValuesVerified": true,
+    "cloudLambdaIngestion": false
+  },
+  "bigquery": {
+    "project": "airi-erp",
+    "dataset": "af_bridge_demo",
+    "location": "US",
+    "tableExpirationDays": 7,
+    "telemetryTable": "airi-erp.af_bridge_demo.telemetry_2c4d6dec82ee43289d0c91a22d0610fd",
+    "telemetryRows": 1,
+    "telemetryExpiresUtc": "2026-11-23T02:01:03.728000+00:00",
+    "loadJob": "af_bridge_load_2c4d6dec82ee43289d0c91a22d0610fd_fedf648256a9ca86",
+    "loadJobStatus": "DONE",
+    "kpiTable": "airi-erp.af_bridge_demo.daily_kpi_2c4d6dec82ee43289d0c91a22d0610fd",
+    "kpiRows": 1,
+    "kpiExpiresUtc": "2026-11-23T02:01:07.786000+00:00",
+    "kpiJob": "af_bridge_kpi_2c4d6dec82ee43289d0c91a22d0610fd_1ed8d802d3fcd027",
+    "kpiJobStatus": "DONE",
+    "queryBytesBilled": 10485760,
+    "queryCompletedUtc": "2026-11-16T02:01:07.884000+00:00"
+  },
+  "dynamodb": {
+    "table": "af-dev-arquifusion",
+    "key": {
+      "PK": "MACHINE#TLQOA-8114",
+      "SK": "KPI#2026-11-16"
+    },
+    "partitionRows": 2,
+    "profileRows": 1,
+    "kpiRows": 1,
+    "source": "bigquery",
+    "sourceMessageId": "2c4d6dec-82ee-4328-9d0c-91a22d0610fd",
+    "kpiDayUtc": "2026-11-16",
+    "operatingHours": 0.25,
+    "tonsMoved": 18.2,
+    "fuelLiters": 7.7,
+    "utilizationPct": 1.0
+  },
+  "replay": {
+    "status": "already_present",
+    "sameLoadAndQueryJobs": true,
+    "newFirehoseMessages": 0,
+    "newDynamoRows": 0
+  },
+  "academyAfterCleanup": {
+    "rule": "DISABLED",
+    "temporaryResourcesAbsent": {
+      "stream": true,
+      "table": true,
+      "database": true,
+      "bucket": true
+    },
+    "cleanupVerifiedAtUtc": "2026-11-16T02:04:48.752Z",
+    "videoMachine": {
+      "status": "OPERATING"
+    },
+    "videoIncidentCount": 0,
+    "demoBearingStock": {
+      "available": 1,
+      "qty": 1,
+      "reserved": 0
+    }
+  }
+}

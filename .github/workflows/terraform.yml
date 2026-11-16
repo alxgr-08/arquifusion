@@ -29,7 +29,10 @@ jobs:
         run: terraform fmt -check -recursive infra
       - name: Validate independent roots without remote state
         run: |
-          for root in infra/aws/bootstrap infra/aws infra/aws/telemetry infra/gcp; do
+          python infra/bridge_airi/package_auth.py
+          python infra/bridge_airi/gateway.py
+          python infra/bridge_airi/warehouse.py
+          for root in infra/aws/bootstrap infra/aws infra/aws/telemetry infra/gcp infra/bridge_airi; do
             terraform -chdir="$root" init -input=false -backend=false
             terraform -chdir="$root" validate
           done

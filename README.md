@@ -2,7 +2,7 @@
 
 ArquiFusion ayuda a un equipo de mantenimiento a decidir cuándo intervenir una máquina, qué repuesto reservar y a quién asignar la reparación. AWS Academy coordina la atención del incidente. Google Cloud analiza el histórico de la flota para detectar consumos anómalos y anticipar la demanda de piezas.
 
-[![Arquitectura de ArquiFusion. AWS Academy gestiona los incidentes, BigQuery ML analiza el histórico sintético y el puente entre nubes queda pendiente.](docs/architecture.png)](docs/architecture.png)
+[![Arquitectura de ArquiFusion al corte del diagrama. AWS Academy gestiona incidentes y BigQuery ML analiza el histórico sintético.](docs/architecture.png)](docs/architecture.png)
 
 [PNG para Canvas](docs/architecture.png) · [JPG original](docs/architecture.jpg) · [Arquitectura y evidencias](docs/arquitectura.md) · [Web de la demo](https://demo.d2ygcm34t8aku9.amplifyapp.com)
 
@@ -12,10 +12,11 @@ ArquiFusion ayuda a un equipo de mantenimiento a decidir cuándo intervenir una 
 |---|---|---|
 | **AWS Academy Learner Lab** (`us-east-1`) | Evalúa salud y coordina incidentes, técnicos y stock. La web identifica a la persona con Google y la API comprueba su operación, rol y asignación. | Lambda, Step Functions Standard, DynamoDB, EventBridge, SQS, SNS, API Gateway HTTP con autorizador JWT, Amplify Hosting, SSM y CloudWatch |
 | **Google Cloud** (proyecto `arquifusion`, ubicación `US`) | Analiza 69 120 lecturas sintéticas de 12 máquinas durante 60 días. Dos modelos ARIMA_PLUS y un KMEANS producen resultados sobre combustible, uso de la flota y demanda de piezas. | BigQuery y BigQuery ML |
+| **Puente operativo** (AWS Academy y proyecto `airi-erp`) | Lleva la telemetría de la operación inscrita a BigQuery y devuelve el KPI diario a DynamoDB. | Firehose, Glue, S3, SQS, API Gateway REST, Cloud Run Jobs, Cloud Scheduler y BigQuery |
 
 **Qué se probó.** En Academy, el ensayo manual `INC-a8c8` terminó con dos acuses, un mantenimiento y una pieza consumida. El técnico confirmó acceso a la web de `ENSAYO-0001`. Al corte de la lámina, sigue pendiente grabar la llegada y la resolución de `ENS-0001` por HTTPS. En Google Cloud, el equipo ejecutó los modelos sobre el histórico sintético. [Evidencia de AWS](docs/evidencias/2026-11-15-academy.json) · [Ensayo web](https://github.com/alxgr-08/arquifusion/issues/23) · [Resultados de BigQuery](analytics/README.md)
 
-**Puente entre nubes.** Un ensayo temporal verificó la conversión de Firehose a Parquet en S3 con un esquema de Glue. El repositorio contiene el exportador de incidentes y consumos, el cargador de BigQuery y el retorno de KPI a DynamoDB. El recorrido de una misma lectura entre ambas nubes queda fuera del despliegue de esta entrega. [Alcance acordado](https://github.com/alxgr-08/arquifusion/issues/14#issuecomment-6901536999)
+**Puente entre nubes.** Dos lecturas de `BRG-8115` llegaron a BigQuery desde dos archivos Parquet de Academy. El trabajo de Cloud Run devolvió a DynamoDB un KPI de 38 toneladas y 17 litros. El 15 de noviembre a las 21:52 de Lima, Cloud Scheduler volvió a procesar la notificación del primer archivo. Se conservaron las dos lecturas y un único KPI. El horario procesa archivos recibidos en S3 con la PC del operador apagada. [Evidencia del puente permanente](docs/evidencias/2026-11-15-puente-permanente.json) · [Operación y alcance](infra/bridge_airi/README.md)
 
 En el Learner Lab, alcanzar diez ejecuciones Lambda simultáneas pone en riesgo la cuenta compartida. La TA indicó ejecutar la ingesta con Python/Boto3 desde una máquina. La demo utiliza un evento manual de incidente, la regla EventBridge deshabilitada y los datos históricos ya cargados en BigQuery. [Estado, restricciones y recorrido del ensayo](docs/arquitectura.md)
 
