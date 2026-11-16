@@ -1,24 +1,41 @@
-import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl, type StyleSpecification } from "maplibre-gl";
+import { Map as MapLibreMap, Marker, NavigationControl, ScaleControl, setWorkerUrl, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef } from "react";
+import terrainUrl from "../assets/relieve-flota.webp";
 import type { Machine, Technician } from "../api/types";
 import { SEVERITY_COLOR, STATUS_LABEL } from "../lib/domain";
 
 // The bundle moves maplibre-gl.mjs, so its default worker URL (relative to import.meta.url) 404s.
 setWorkerUrl(workerUrl);
 
-const OSM_STYLE: StyleSpecification = {
+const FLEET_STYLE: StyleSpecification = {
   version: 8,
   sources: {
     osm: {
       type: "raster",
       tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
       tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    },
+    relief: {
+      type: "image",
+      url: terrainUrl,
+      // Geographic edges of the elevation mosaic, clockwise from its NW corner.
+      coordinates: [
+        [-70.13671875, -23.44308893112178], [-69.8291015625, -23.44308893112178],
+        [-69.8291015625, -23.725011735951792], [-70.13671875, -23.725011735951792],
+      ],
     },
   },
-  layers: [{ id: "osm", type: "raster", source: "osm" }],
+  layers: [
+    { id: "background", type: "background", paint: { "background-color": "#f2efe9" } },
+    { id: "osm", type: "raster", source: "osm" },
+    {
+      id: "relief", type: "raster", source: "relief",
+      paint: { "raster-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0, 11, 0.40, 13, 0.78] },
+    },
+  ],
 };
 
 interface Props {
@@ -28,7 +45,6 @@ interface Props {
   height?: number;
 }
 
-/** Amazon Location style when VITE_MAP_STYLE_URL is set (Rol 1), OpenStreetMap otherwise. */
 const NO_TECHNICIANS: Technician[] = [];
 
 export function FleetMap({ machines, technicians = NO_TECHNICIANS, onSelect, height = 460 }: Props) {
@@ -40,13 +56,18 @@ export function FleetMap({ machines, technicians = NO_TECHNICIANS, onSelect, hei
 
   useEffect(() => {
     if (!container.current) return;
+    const customStyle = import.meta.env.VITE_MAP_STYLE_URL;
     map.current = new MapLibreMap({
       container: container.current,
-      style: import.meta.env.VITE_MAP_STYLE_URL || OSM_STYLE,
+      style: customStyle || FLEET_STYLE,
+      attributionControl: customStyle ? {} : {
+        customAttribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Relieve: Mapzen · USGS</a>',
+      },
       center: [-69.98, -23.602],
       zoom: 13.2,
     });
     map.current.addControl(new NavigationControl(), "top-right");
+    map.current.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");
     return () => map.current?.remove();
   }, []);
 
