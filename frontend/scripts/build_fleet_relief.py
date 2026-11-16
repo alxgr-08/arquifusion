@@ -18,7 +18,6 @@ from urllib.request import urlopen
 import numpy as np
 from PIL import Image
 
-
 ZOOM = 13
 COLUMNS = range(2500, 2507)
 ROWS = range(4645, 4652)
@@ -68,7 +67,7 @@ def main():
     positions = [(x, y) for y in ROWS for x in COLUMNS]
     pixels = np.empty((256 * len(ROWS), 256 * len(COLUMNS), 3), dtype=np.uint8)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        for (x, y), tile in zip(positions, pool.map(read_tile, positions)):
+        for (x, y), tile in zip(positions, pool.map(read_tile, positions), strict=True):
             row, col = 256 * (y - ROWS.start), 256 * (x - COLUMNS.start)
             pixels[row : row + 256, col : col + 256] = tile
     if hashlib.sha256(pixels).hexdigest() != MOSAIC_SHA256:
