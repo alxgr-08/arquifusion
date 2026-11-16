@@ -4,9 +4,13 @@
 ## Problems / rubric
 <!-- e.g. P1, P8 · rubrica:ia -->
 
+## Validation
+<!-- Commands actually executed, results, and any checks that could not run. -->
+
 ## Checklist (Definition of Done)
-- [ ] Input/output validate against `contracts/`
-- [ ] No secrets or hardcoded config (SSM / Secrets Manager)
-- [ ] At least one test for the main logic
-- [ ] Service README updated (what, trigger, how to test)
-- [ ] Deployed to dev and tested with `contracts/examples`
+
+- [ ] Affected input/output validate against `contracts/`, or not applicable
+- [ ] No secrets, credentials, Terraform state or private build settings
+- [ ] Relevant CI, Terraform and Security checks pass
+- [ ] Changed behavior has appropriate test coverage; documentation is current
+- [ ] Deployment status is explicit: local validation, deployed, or tested end to end

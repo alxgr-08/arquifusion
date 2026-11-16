@@ -4,7 +4,7 @@ Arquitectura vigente y evidencias por entorno: [ArquiFusion](../../docs/arquitec
 
 AWS Academy Learner Lab, perfil `default`, región `us-east-1`. El estado de la aplicación, el bootstrap y los archivos de datos tienen ciclos de vida separados.
 
-**Corte actual:** 60 recursos tras la API autorizada; hosting live, kit `ENSAYO-0001` y dos grants ya disponibles. EventBridge sigue DISABLED y el bootstrap conserva sus hashes. Los planes antiguos contra 27/29 recursos son históricos. Conservar API y hosting al planificar de nuevo y revisar el [relevo del cierre](../../docs/cierre-rol1-2026-11-15.md) antes de ejecutar los procedimientos iniciales de esta guía.
+**Estado documentado:** 60 recursos en el corte de API y hosting; web live, kit `ENSAYO-0001` y dos grants disponibles. EventBridge sigue DISABLED. El lago y el puente horario se desplegaron posteriormente desde [infra/bridge_airi](../bridge_airi/README.md), con estado independiente. Los planes de 27/29 recursos y las secciones de preparación que siguen son históricos; al planificar otra vez, conservar API/hosting y comprobar el estado de cada raíz. [Arquitectura vigente](../../docs/arquitectura.md) · [Relevo de API y hosting](../../docs/cierre-rol1-2026-11-15.md)
 
 ## Preparación del primer despliegue
 
@@ -94,7 +94,7 @@ Para el evaluador, `health_evaluator/build.py` reúne las fuentes de `services/h
 
 ## API, telemetría y puente
 
-El Terraform de la API empaqueta el handler de Sebastián y publica, bajo activación explícita, dos rutas de incidentes con JWT, un Lambda y el stage `dev`. Alexis registró el cliente de Google y el origen `http://localhost:5173`. Para hosting hace falta registrar su origen HTTPS exacto. [API y ensayo](api/README.md)
+El Terraform de la API empaqueta el handler de Sebastián. El despliegue documentado tiene doce rutas con JWT, una Lambda y el stage `dev`. El origen HTTPS de Amplify ya está registrado en Google y configurado en CORS. [API y ensayo](api/README.md)
 
 El módulo `telemetry` espera un bucket privado de datos exclusivo. Su activación prepara Glue, los controles S3 y un Firehose para el simulador en modo `direct`. El diagrama distingue la prueba temporal en Academy del despliegue permanente. [Configuración de telemetría](telemetry/README.md) · [Arquitectura](../../docs/architecture.png)
 

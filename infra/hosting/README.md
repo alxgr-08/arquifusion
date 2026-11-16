@@ -1,6 +1,8 @@
 # Hosting de la SPA
 
-Amplify Hosting tiene publicada la SPA live en `af-dev-arquifusion-web` (`d2ygcm34t8aku9`), rama manual `demo`, AWS Academy `us-east-1`. URL: **https://demo.d2ygcm34t8aku9.amplifyapp.com**. Alexis confirmó el origen Google. Job 1 terminó SUCCEED y el cotejo HTTPS comprobó index/entrada contra el ZIP de SHA `F996DDBE6DDEA68D19057E5DC3F5B2F65134EEBEBBF394D8AA3C5B2FE7B53447`. La pantalla muestra el acceso Google; el login real sigue pendiente. [Relevo actual](../../docs/cierre-rol1-2026-11-15.md) · [Despliegues manuales de Amplify](https://docs.aws.amazon.com/amplify/latest/userguide/manual-deploys.html)
+Amplify Hosting tiene publicada la SPA live en `af-dev-arquifusion-web` (`d2ygcm34t8aku9`), rama manual `demo`, AWS Academy `us-east-1`: [abrir demo](https://demo.d2ygcm34t8aku9.amplifyapp.com). Alexis confirmó el origen Google y el técnico confirmó el login. Los detalles del Job 1 y el hash de su ZIP pertenecen al [corte histórico de API y hosting](../../docs/cierre-rol1-2026-11-15.md); la [arquitectura](../../docs/arquitectura.md) reúne las evidencias posteriores.
+
+La [CI](../../.github/workflows/ci.yml) ejecuta pruebas y build en modo `mock` y genera el ZIP de vista previa con las reglas SPA. El artefacto se conserva siete días en Actions. La publicación live utiliza la configuración pública revisada y el procedimiento siguiente. [Despliegues manuales de Amplify](https://docs.aws.amazon.com/amplify/latest/userguide/manual-deploys.html)
 
 ## Preparación live sin publicar
 

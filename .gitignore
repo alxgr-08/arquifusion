@@ -34,6 +34,10 @@ backend.hcl
 !.env.example
 *.pem
 *.key
+*.p12
+*.pfx
+credentials
+application_default_credentials.json
 *-credentials.json
 gcp-sa*.json
 service-account*.json

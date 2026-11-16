@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the analytics pipeline in order (the same SQL runs daily as BigQuery scheduled queries).
+# Run the historical analytics pipeline in order. Scheduling is configured separately, if provisioned.
 # Usage: PROJECT=my-gcp-project ./analytics/run_pipeline.sh
 set -euo pipefail
 cd "$(dirname "$0")/sql"
