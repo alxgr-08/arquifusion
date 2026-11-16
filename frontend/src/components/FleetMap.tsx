@@ -53,18 +53,23 @@ interface Props {
   machines: Machine[];
   technicians?: Technician[];
   onSelect?: (machineId: string) => void;
+  onHover?: (machineId: string | undefined) => void;
+  highlight?: string;
   height?: number;
 }
 
 const NO_TECHNICIANS: Technician[] = [];
 
-export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, onSelect, height = 460 }: Props) {
+export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, onSelect, onHover, highlight, height = 460 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap>(null);
   const framed = useRef(false);
   const markers = useRef<Marker[]>([]);
+  const machineEls = useRef(new Map<string, HTMLElement>());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onHoverRef = useRef(onHover);
+  onHoverRef.current = onHover;
   const pascoDemo = operationId === "ENSAYO-0001";
   const showPascoLocation = pascoDemo && machines.some((m) => PASCO.contains([m.lon, m.lat]));
 
@@ -101,6 +106,7 @@ export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, 
       framed.current = true;
     }
     markers.current.forEach((mk) => mk.remove());
+    machineEls.current.clear();
     const zones = new Map<string, { lat: number; lon: number; n: number }>();
     for (const machine of machines) {
       const z = zones.get(machine.zoneId) ?? { lat: 0, lon: 0, n: 0 };
@@ -120,6 +126,9 @@ export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, 
         el.title = `${machine.machineId} · ${STATUS_LABEL[machine.status]} · salud ${Math.round(machine.healthScore)}`;
         el.textContent = machine.machineId.split("-")[0][0];
         el.onclick = () => onSelectRef.current?.(machine.machineId);
+        el.onmouseenter = () => onHoverRef.current?.(machine.machineId);
+        el.onmouseleave = () => onHoverRef.current?.(undefined);
+        machineEls.current.set(machine.machineId, el);
         return new Marker({ element: el }).setLngLat([machine.lon, machine.lat]).addTo(m);
       }),
       ...technicians.map((t) => {
@@ -131,6 +140,11 @@ export function FleetMap({ operationId, machines, technicians = NO_TECHNICIANS, 
       }),
     ];
   }, [machines, technicians, pascoDemo, showPascoLocation]);
+
+  // Hovering a table row lights up its marker (and the other way round through onHover).
+  useEffect(() => {
+    machineEls.current.forEach((el, id) => el.classList.toggle("hl", id === highlight));
+  }, [highlight, machines]);
 
   return <>
     {showPascoLocation && <p className="map-location">Cerro de Pasco, Perú · Flota simulada</p>}

@@ -6,6 +6,7 @@ import type { Incident } from "../api/types";
 import { formatTime, METRIC_LABEL, ROLE_LABEL } from "../lib/domain";
 import { useRole } from "../lib/hooks";
 import { SeverityBadge } from "./Badges";
+import { useToast } from "./Live";
 
 const STATE_LABEL: Record<Incident["state"], string> = {
   OPEN: "Abierto",
@@ -38,6 +39,7 @@ const EVENT_LABEL: Record<string, string> = {
 
 export function IncidentCard({ incident, compact, onChange }: { incident: Incident; compact?: boolean; onChange: () => void }) {
   const { role } = useRole();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [ackError, setAckError] = useState<string>();
   const [review, setReview] = useState<{ incident: Incident; etag: string | null }>();
@@ -62,6 +64,10 @@ export function IncidentCard({ incident, compact, onChange }: { incident: Incide
     setAckError(undefined);
     try {
       await api.ackIncident(i.machineId, i.incidentId, action, review.etag);
+      toast({
+        text: action === "ARRIVED" ? `Llegada confirmada en ${i.machineId}` : `${i.incidentId} resuelto`,
+        severity: "OK",
+      });
       setReview(undefined);
       onChange();
     } catch (err) {
